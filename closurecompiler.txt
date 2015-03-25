@@ -1,0 +1,14 @@
+// ==ClosureCompiler==
+// @output_file_name proplogic_min.js
+// @compilation_level ADVANCED_OPTIMIZATIONS
+// @code_url http://logictools.org/proplog_ui.js
+// @code_url http://logictools.org/proplog_parse.js
+// @code_url http://logictools.org/proplog_convert.js
+// @code_url http://logictools.org/proplog_generate.js
+// @code_url http://logictools.org/proplog_dpll.js
+// @code_url http://logictools.org/proplog_olddpll.js
+// @code_url http://logictools.org/proplog_naivedpll.js
+// @code_url http://logictools.org/proplog_searchtable.js
+// @code_url http://logictools.org/proplog_naiveres.js
+// @code_url http://logictools.org/proplog_res.js
+// ==/ClosureCompiler==
