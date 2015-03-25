@@ -1,0 +1,5 @@
+http://logictools.org
+http://logictools.org/propositional.html
+http://logictools.org/predicate.html
+http://logictools.org/download.html
+http://logictools.org/about.html
