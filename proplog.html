@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<head>
+<title>Proplog</title>
+<meta name="description" content="Simple propositional logic solvers: 
+  easy to hack and experiment with.">
+<meta name="author" content="Tanel Tammet (tanel.tammet at gmail.com)">
+<script>
+function gid(x) { return document.getElementById(x); }
+</script>
+<script src="proplog_ui.js"></script>
+<script src="proplog_parse.js"></script>
+<script src="proplog_convert.js"></script>
+<script src="proplog_generate.js"></script>
+<script src="proplog_dpll.js"></script>
+<script src="proplog_olddpll.js"></script>
+<script src="proplog_naivedpll.js"></script>
+<script src="proplog_searchtable.js"></script>
+<script src="proplog_naiveres.js"></script>
+<script src="proplog_res.js"></script>
+</head>
+<body style="font-family: arial,helvetica,sans-serif; color: #333333; margin: 20px;">
+
+<h2>Solve a propositional formula 
+ (see <a href="#" onclick="gid('syntax').style.display='block';">syntax</a> below):
+</h2>
+  <form>
+  
+    <textarea class="form-control" id="propinput" 
+      style="height: 200px; width: 800px; margin-bottom: 20px;">
+(a -&gt; b) &amp; a &amp; -b
+     </textarea>
+    <p>
+    <div style="display: inline-block;">
+        
+    <!-------- solve the formula ----------- -->
+    
+    <button class="btn btn-small btn-danger" 
+    onclick="proplog_ui.solve(gid('propinput').value,gid('algorithm_select').value,gid('trace_method').value); 
+       return false;"
+       style="height: 36px; color: red;">Solve</button>
+    using   
+    <select style="height: 36px;" id="algorithm_select">
+      <option value="dpll_better">dpll: better</option>
+      <option value="dpll_old">dpll: old</option>
+      <option value="dpll_naive">dpll: naive</option>
+      <option value="truth_table_better">truth table: better</option>
+      <option value="truth_table_naive">truth table: naive</option>
+      <option value="resolution_better">resolution: better</option>
+      <option value="resolution_naive">resolution: naive</option>
+    </select>
+    showing
+    <select style="height: 36px;" id="trace_method">
+      <option value="none">no trace</option>
+      <option value="html">html trace</option>
+      <option value="text">text trace</option>
+      <option value="console">console trace</option>      
+    </select>   
+    <p>
+    
+    <!-------- build a table or form ----------- -->
+    <button class="btn btn-small btn-danger" 
+    onclick="proplog_ui.build(gid('propinput').value,gid('build_select').value); return false;"
+       style="height: 36px; color: red;">Build</button> a
+    <select style="height: 36px;" id="build_select">      
+      <option value="truth_table">truth table</option>
+      <option value="cnf">clause normal form</option>      
+      <option value="parse_tree">parse tree</option>
+    </select>   
+    <p>
+           
+    
+    <!-------- generate or select a problem ----------- -->
+    
+    
+    <button class="btn btn-small btn-default" 
+       style="height: 36px;"
+       onclick="gid('propinput').value=proplog_generate.generate_problem(gid('n_value').value,
+         gid('problem_select').value); 
+         return false;">Generate a problem</button> 
+    of type   
+    <select style="height: 36px;" id="problem_select">
+      <option value="random_3-sat">random 3-sat</option>
+      <option value="all_combinations">all combinations</option>
+      <option value="small_unsat">small unsat</option>     
+    </select>     
+    for
+    <input type="text" id="n_value" style="width: 40px; height: 30px;" value="2"></input>
+    variables        
+    
+    <button class="btn btn-small btn-default" 
+       style="margin-left: 10px; height: 36px;"
+       onclick="gid('propinput').value=''; proplog_ui.clear_output(); return false;">Clear</button>          
+    <input type="file" id="files" name="files" class='btn btn-default btn-small' 
+       style="display: inline-block; height: 36px;" value=""> 
+    <p>    
+      
+    <span style="margin-left: 0px">More problems: 
+      <a href="http://www.cs.ubc.ca/~hoos/SATLIB/benchm.html">satlib</a>,
+      <a href="http://www.satcompetition.org/">competitions</a>
+    </span>
+    </div>
+
+
+  </form>
+    
+<h2>Result</h2>
+<div id="result"></div>
+
+<h2>Process in milliseconds</h2>    
+<div id="process"></div>
+
+<div id="syntax" style="display: none">
+<h2>Syntax</h2> 
+
+Use either a conventional formula syntax like
+<pre>
+(a -&gt; b) &amp; a &amp; -b
+</pre>
+or a <a href="http://www.satcompetition.org/2009/format-benchmarks2009.html">dimacs</a> 
+version of the clause normal form syntax like
+<pre>
+-1 2
+1
+-2
+</pre>
+which is a conjunction of disjunction lines with numbers standing for variables:
+the last example means simply <tt>(-x1 v x2) &amp; x1 &amp; -x2</tt>
+<p>
+For conventional formula syntax:
+<ul>
+<li>negation symbols are <b>-, ~</b></li>
+<li>conjunction symbols are <b>&amp;, and</b></li>
+<li>disjunction symbols are <b>|, v, V, or</b></li> 
+<li>xor symbols are <b>+, xor </b></li>
+<li>implication symbols are <b>-&gt;, =&gt;</b></li> 
+<li>equivalence symbols are <b>&lt;-&gt;, &lt;=&gt;</b></li> 
+</ul>
+There is no operator precedence; all operators are bound from left:<br>
+<tt>a &amp; b v c &amp; d v e</tt>  is read as <tt>((((a &amp; b) v c) &amp; d) v e)</tt>
+<p>
+For dimacs you may use or skip the initial comment lines starting with <b>c</b>,
+the special <b>p</b> line and the final <b>0</b> symbols at the end of each disjunct.<br>
+We allow the trailing <b>0</b>-s only at the end of a line.
+<p>
+I.e. you may use the full dimacs version like
+<pre>
+c comment
+p cnf 2 3
+-1 2 0
+1 0
+-2 0
+</pre>
+or just
+<pre>
+-1 2
+1
+-2
+</pre>
+
+
+<a href="#" onclick="gid('syntax').style.display='none';">hide syntax</a>
+</div>
+
+<script>
+function handleFileSelect(evt) {
+  var files = evt.target.files; 
+  for (var i = 0, f; f = files[i]; i++) {
+    var reader = new FileReader();
+    reader.onload = (function(theFile) {
+      return function(e) { gid('propinput').value=e.target.result; };
+    })(f);
+    reader.readAsText(f);
+  }
+}
+
+gid('files').addEventListener('change', handleFileSelect, false);
+</script>
+</body>
+</html>

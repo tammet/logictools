@@ -1,0 +1,401 @@
+@import url(http://fonts.googleapis.com/css?family=Roboto:400,300);
+
+/* Space out content a bit */
+body {  
+  padding-bottom: 0px;
+  background-color:	#e5e5e5;
+  overflow-y:scroll;
+  font-family: Arial,Helvetica,sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 {
+    font-family: 'Roboto',Arial,Helvetica,sans-serif;
+    font-weight: 300;
+    line-height: 1.1;
+}
+
+/* Everything but the jumbotron gets side spacing for mobile first views */
+.header,
+.marketing,
+.footer {
+  padding-left: 15px;
+  padding-right: 15px;
+}
+
+/* Custom page header */
+.header {
+  border-bottom: 1px solid #e5e5e5;
+}
+/* Make the masthead heading the same height as the navigation */
+.header h3 {
+  margin-top: 0;
+  margin-bottom: 0;
+  line-height: 40px;
+  padding-bottom: 19px;
+}
+
+/* Custom page footer */
+.footer {
+  padding-top: 19px;
+  color: #777;
+  border-top: 1px solid #e5e5e5;
+}
+
+/* Customize container */
+@media (min-width:768px) {
+  .container {
+    max-width: 960px;
+  }
+}
+.container-narrow > hr {
+  margin: 30px 0;
+}
+
+/* Main marketing message and sign up button */
+.jumbotron {
+  text-align: center;
+  background-color: white;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e0e0e0;
+  max-width: 960px;
+  margin-top: 30px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-top:25px;
+  font-family: 'Roboto',Arial,Helvetica,sans-serif;
+  font-weight: 300;
+}
+.jumbotron .btn {
+  font-size: 21px;
+  padding: 14px 24px;
+}
+
+.jumbotron .smallbtn {
+  font-size: 18px !important;
+  padding: 10px 16px !important;
+}
+
+.jumbotron_title {
+  color: #bbbbbb !important; 
+  text-shadow: 2px 2px #f0f0f0 !important; 
+  text-align: left !important;
+}
+
+.jumbotron_caption {
+  color: #666666 !important; 
+  margin-bottom: 10px !important;
+}
+
+.marketing {
+  margin: 40px 0;
+}
+.marketing p + h4 {
+  margin-top: 28px;
+}
+
+.sidemenu {
+  display: none;	
+}
+
+/* footer for mobile */
+
+.ofooter {
+  height: 240px;
+  margin-top: 65px;
+  background-color: #f0f0f0;  
+  color: #333333;  
+}
+
+.ifooter {
+  padding-top: 40px;		  
+}
+ 
+#gplusone {
+  position: absolute;  
+  left: 10px;
+  top: 40px;
+}
+
+#twitter {
+  position: absolute; 
+  left: 10px;
+  top: 80px;
+}
+
+#facebook {
+  position: absolute;
+  left: 10px;
+  top: 120px;
+} 
+
+#team {
+  position: absolute;	
+  left: 10px;
+  top: 200px;
+}
+
+.btn-top {
+  width: 150px;	
+  margin-bottom: 15px;
+}
+
+/* Responsive: Portrait tablets and up */
+
+@media screen and (min-width:960px ) {
+  /* Remove the padding we set earlier */
+  .header,
+  .marketing,
+  .footer {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  /* Space out the masthead */
+  .header {
+    margin-bottom: 30px;
+  }
+  /* Remove the bottom border on the jumbotron for visual effect */
+  .jumbotron {
+    border-bottom: 0;
+  }
+    
+  .btn-top {
+    width: 150px;	
+	margin-bottom: 0px;
+  }	
+   
+  .wiblock1 {
+    margin-right: 10px;	 
+  }
+  .wiblock2 {
+  }
+  .wiblock3 {
+    margin-left: 10px;	
+  }
+  
+  .wiblock61 {
+    margin-right: 10px;	
+  }
+  
+  .wiblock62 {
+    margin-left: 10px;	
+  }
+  /*
+  .wblock1 .wiblock {
+    min-height: 300px;	
+  }
+
+  .wblock2 .wiblock {
+    min-height: 550px;	
+  }
+
+  .wblock3 .wiblock {
+	min-height: 450px;	
+  }
+  
+  .wblock4 .wiblock {
+	min-height: 370px;	
+  }
+	*/
+  .wiblockbtn {   
+    position: absolute; 
+    bottom: 25px;
+    left: 0;
+    right: 0;
+  }	  
+  
+  /* footer */
+  
+    .ofooter {
+	  height: 120px;
+	  margin-top: 65px;
+	  background-color: #f0f0f0;
+	  color: #333333;  
+	}
+
+	.ifooter {
+	  padding-top: 40px;		  
+	}
+  
+	#team {
+	  position: relative;	
+	  text-align: right;
+	  top: 0px;
+	}
+	 
+	#gplusone {
+	  position: absolute; 
+	  top: 40px; 
+	  left: 0px;
+	}
+
+	#twitter {
+	  position: absolute; 
+	  top: 42px; 
+	  left: 60px;
+	}
+
+	#facebook {
+	  position: absolute;
+	  top: 40px;
+	  left: 160px;
+	} 		
+
+}
+
+@media screen and (min-width:1545px ) {
+  .sidemenu {	
+	display: block;  
+    position: fixed;
+    top: 84px;	
+    width: 280px; 
+    margin-left: 10px;
+    background-color: white;	
+	border-style: solid;
+	border-width: 1px;
+	border-color: #e0e0e0;
+	padding: 0px; 
+	padding-bottom: 20px;
+	border-radius: 4px;
+  }
+  div.toc {
+	display: none;  
+  }
+}
+
+
+.menutitle {
+  text-align: center;	
+}
+
+.isidemenu {
+  margin-left: 15px;
+  margin-right: 15px;    
+  color: #333333;
+  wrap-margin: 15px;  
+}
+
+.isidemenu a {    
+  color: #716B7A;
+  line-height: 22px;
+}
+
+.isidemenu dd dl {
+  display: none;  
+}
+
+.isidemenu dd dl { 
+  margin-left: 10px;
+}
+
+.isidemenu dd dl a {
+  /* color: #428BCA; */
+  font-size: 13px;
+  color: #666666;  
+  font-family: Arial,Helvetica,sans-serif;
+}
+
+.wblock {
+  padding: 2px;
+  margin: 0px;  
+}
+
+.wiblock_single {
+  padding-bottom: 30px !important;
+}
+
+.wiblock {
+  background-color: white;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e0e0e0;
+  padding: 20px;
+}
+
+.wiblock_full {
+  text-align: left !important;	 
+}
+
+.wiblock_full_header {
+  text-align: left !important;	 
+  margin-top: 30px !important;
+}
+
+.wiblock h2 {
+  margin-top: 5px;
+  margin-bottom: 15px;
+  text-align: center;
+  font-family: 'Roboto',arial,sans-serif;
+  font-size: 20px;
+  font-weight: 300;
+  white-space: normal;
+  color: #262626 !important;
+}
+
+h2.title {
+  margin-top: 25px;
+  margin-bottom: 15px;
+  text-align: center;
+  font-family: 'Roboto',arial,sans-serif;
+  font-size: 20px;
+  font-weight: 300;
+  white-space: normal;  
+  color: #262626 !important;	
+  text-align: left; 
+  line-height: 1.1;
+  font-size: 24px;
+  text-shadow: 0px;
+}
+.wiblock ul  {
+  padding-left: 20px;
+}
+
+.wiblockbtn {
+  text-align: center;
+  margin-top: 15px;
+}
+
+.wiblockbtn a {
+  text-align: center;
+}
+
+.wiblockimg {
+  text-align: center;  
+  margin-bottom: 20px;
+}
+
+.toc span {
+  font-weight: normal !important; 	
+}
+
+.toc strong {
+  margin-top: 5px;
+  margin-bottom: 15px;
+  text-align: center;
+  font-family: 'Roboto',arial,sans-serif;
+  font-size: 20px;
+  font-weight: 400;
+  white-space: normal;  
+  color: #262626 !important;	
+  text-align: left; 
+  line-height: 1.1;
+  font-size: 24px;	
+}
+
+div h2.title {
+  font-weight: bold !important;	
+}
+
+
+.logo {
+  padding-right: 0px;
+  margin-left: -12px;
+  padding-left: 0px;
+
+}
+
+
+.qlink:hover {
+  color: red !important;	
+}
+

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head itemscope>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<meta name="description" content="Simple propositional logic solvers: easy to hack and experiment with.">
+<meta name="author" content="Tanel Tammet">
+<meta name="keywords" content="logic, solvers, propositions, dpll, resolution, truth table"> 
+
+<meta itemprop="itemtype" content="http://schema.org/SoftwareApplication">
+<meta itemprop="name" content="Logictools">
+<meta itemprop="description" content="Simple propositional logic solvers: easy to hack and experiment with.">
+<meta itemprop="url" content="http://logictools.org">
+<meta itemprop="operatingSystems" content="Linux, Windows">
+<meta itemprop="softwareApplicationCategory" content="WebApplication">
+
+<meta property="og:title" content="Logictools"> 
+<meta property="og:url" content="http://logictools.org"> 
+<meta property="og:site_name" content="Logictools"> 
+<meta property="og:type" content="website">
+<meta property="og:description" content="Simple propositional logic solvers: easy to hack and experiment with.">
+<meta property="fb:admins" content="tanel.tammet">
+
+<link rel="shortcut icon" href="logo.png">
+
+<title>Logictools</title>
+<!-- Bootstrap core CSS -->
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/css/bootstrap.min.css">
+<!-- Custom styles for this template -->
+<link href="wdb.css" rel="stylesheet">
+
+</head>
+
+<body>
+
+<div id="fb-root"></div>
+
+<div class="navbar navbar-inverse navbar-static-top" style="background-color: #333333;">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">Logictools</a>
+    </div>
+    <div class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li class="dummy"><a href="index.html">Solve</a></li>        
+        <li class="dummy"><a href="propositional.html">Propositional logic</a></li>
+        <li class="dummy"><a href="predicate.html">Predicate logic</a></li>
+        <li class="active"><a href="download.html">Download</a></li>        
+        <li class="dummy"><a href="about.html">About</a></li> 
+      </ul>
+    </div><!--/.navbar-collapse -->
+  </div>
+</div>
+
+<!-- content after titlebar -->
+
+
+<!-- Main jumbotron for a primary marketing message or call to action -->
+<div class="jumbotron" >
+  <div class="container" style="text-align: left; padding-left: 45px;">
+    <h1 class="jumbotron_title">Download </h1>
+    <p class="jumbotron_caption">self-contained, no-dependencies, easy-to-hack javascript code under the
+       <a href="https://en.wikipedia.org/wiki/MIT_License">MIT licence</a>
+    </p>
+    <p style="margin-top: 20px; margin-bottom: 30px;">    
+    <a class="btn smallbtn btn-primary" style="margin-right: 20px;" 
+        href="https://github.com/tammet/logictools">from Github &raquo;</a> or as separate files:
+    </p>
+
+<div style="font-family: Arial, Helvetica, sans-serif;">
+Release 2015-03-25.<p></p>
+    
+<b>User interface</b> for trying out all the functions:
+
+
+<ul style="margin-top: 10px;">
+<li><a href="proplog.html">proplog.html</a> a barebones webpage without menus, design, bootstrap or jquery</li>
+<li><a href="proplog_ui.js">proplog_ui.js</a> calling the algorithms below </li>
+</ul>
+
+<b>Solvers</b> for experimenting with different algorithms are self-contained:
+
+<ul style="margin-top: 10px;">
+<li><a href="proplog_dpll.js">proplog_dpll.js</a> the best solver among the ones provided</li>
+<li><a href="proplog_olddpll.js">proplog_olddpll.js</a> old-style dpll: no learning and full pure literal elimination</li>
+<li><a href="proplog_naivedpll.js">proplog_naivedpll.js</a> naive minimal dpll, easy to understand</li>
+<li><a href="proplog_res.js">proplog_res.js</a> optimized resolution method: better than table search, worse than dpll</li>
+<li><a href="proplog_naiveres.js">proplog_naiveres.js</a> naive minimal resolution, easy to understand</li>
+<li><a href="proplog_searchtable.js">proplog_searchtable.js</a> basic table search: both leaves-only and all-nodes test options </li>
+</ul>
+
+<b>Utilities</b> are also self-contained:
+
+<ul style="margin-top: 10px;">
+<li><a href="proplog_parse.js">proplog_parse.js</a> parse formula and dimacs syntaxes</li>
+<li><a href="proplog_convert.js">proplog_convert.js</a> 
+  convert to cnf, rename variables, print formulas, build and print the full truth table</li>
+<li><a href="proplog_generate.js">proplog_generate.js</a> problem generators </li>
+</ul>
+</div>
+    
+  </div>
+</div>
+
+
+
+<!-- footer -->
+
+<div class="ofooter">  
+  <div class="col-md-12 container ifooter">
+  </div>  
+</div> 
+
+
+<!-- at-end-scripts -->
+
+<script>
+// instead of jquery
+
+function gid(x) { return document.getElementById(x); }
+
+// reading a file
+/*
+function handleFileSelect(evt) {
+  var files = evt.target.files; 
+  for (var i = 0, f; f = files[i]; i++) {
+    var reader = new FileReader();
+    reader.onload = (function(theFile) {
+      return function(e) { gid('propinput').value=e.target.result; };
+    })(f);
+    reader.readAsText(f);
+  }
+}
+
+gid('files').addEventListener('change', handleFileSelect, false);
+*/
+</script>
+<!-- ui with bootstrap -->
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+<script src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/js/bootstrap.min.js"></script>
+<!-- Solver code -->
+<!--
+<script src="proplog_ui.js"></script>
+<script src="proplog_parse.js"></script>
+<script src="proplog_convert.js"></script>
+<script src="proplog_generate.js"></script>
+<script src="proplog_dpll.js"></script>
+<script src="proplog_olddpll.js"></script>
+<script src="proplog_naivedpll.js"></script>
+<script src="proplog_searchtable.js"></script>
+<script src="proplog_naiveres.js"></script>
+<script src="proplog_res.js"></script>
+-->
+<script>
+// google analytics
+/*
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-61132529-1', 'auto');
+  ga('send', 'pageview');
+*/  
+</script>  
+  
+</body>
+</html>
