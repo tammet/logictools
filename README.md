@@ -8,6 +8,6 @@ The focus is on simplicity, ease of use, hacking and experimenting,
 not state of the art efficiency-wise.
 
 Help and cooperation appreciated for improving the current code, writing and proposing new tools, etc. 
-See <a href="https://github.com/tammet/logictools">the github page</a>.
+See <a href="https://logictools.org">the site with functioning code</a>.
 
 Site,  initial solvers and utilities written by Tanel Tammet (tanel.tammet at gmail.com) 
