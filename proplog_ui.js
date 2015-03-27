@@ -116,7 +116,7 @@ function solve_aux(txt,solver_algorithm,trace_method) {
   
   show_process(res[1]);
   
-  if (res[0]!=false) {                 
+  if (res[0]!==false) {                 
     if (solver_algorithm=="resolution_naive" || solver_algorithm=="resolution_better") {    
       txt="Clause set is <b>true</b> for some assignment of values to variables."; 
       // resolution generates no model or partial model

@@ -141,7 +141,7 @@ exports.dpll = function (clauses,maxvarnr,trace,varnames) {
     return [false,trace_list.join("\r\n")];
   } else if (clauses.length===0) { // no clauses remaining: a model found
     store_model(varvals);
-    if (trace_flag) trace_list.push("assignment found during simplification");
+    if (trace_flag) trace_list.push("assignment found during simplification");    
     return [result_model,trace_list.join("\r\n")];
   }
   

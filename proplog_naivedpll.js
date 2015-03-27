@@ -125,7 +125,6 @@ function satisfiable_at(clauses,varvals,varnr,val,depth) {
     // assigned variable passed
     if (trace_flag) print_trace(depth,"setting var "+showvar(varnr)+" to "+val);
     varvals[varnr]=val; 
-    if (varnr===varvals.length-1) truth_value_leaves_count++;
   } else {
     if (trace_flag) print_trace(depth,"search called without setting a var before");
   }
