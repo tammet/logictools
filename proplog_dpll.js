@@ -497,7 +497,7 @@ function simplify_clause_list(clauses,varvals,occvars,posbuckets,negbuckets,deri
       nc=new Int32Array(nlen);
       nc[0]=clause[0];
       nc[1]=clause[1];
-      k=0;
+      k=2;
       for(j=2;j<clause.length;j++) {
         if (clause[j]===0) continue;
         nc[k]=clause[j];
