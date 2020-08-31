@@ -29,7 +29,37 @@
 <!-- Bootstrap core CSS -->
 <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/css/bootstrap.min.css">
 <!-- Custom styles for this template -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono&family=Roboto:wght@300&display=swap">
+<!--<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono&family=Inconsolata&family=Roboto:wght@300&display=swap">
+-->
 <link href="wdb.css" rel="stylesheet">
+<style>
+html.wf-loading * {
+     opacity: 0;
+ }   
+.jumbotron_title  {
+  font-family: 'Roboto',Arial,Helvetica,sans-serif;
+  font-weight: 300 !important;
+  line-height: 1.1 !important;
+  font-size: 24pt !important;
+  color: #666 !important;
+  text-shadow: 0px !important;
+}
+.nice-container {
+  border: 1;
+  border-width: 1px, 1px, 1px, 1px;
+  border-radius: 5px;
+  color: #666;
+}
+</style>  
+<script src="https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js"></script>
+<script>
+  WebFont.load({
+    google: {
+      families: ['Roboto', 'Inconsolata']
+    }
+  });
+</script>
 <script>
 // google analytics
   (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
@@ -58,9 +88,10 @@
     </div>
     <div class="navbar-collapse collapse">
       <ul class="nav navbar-nav">
-        <li class="dummy"><a href="index.html">Solve</a></li>        
-        <li class="dummy"><a href="propositional.html">Propositional logic</a></li>
-        <li class="dummy"><a href="predicate.html">Predicate logic</a></li>
+        <li class="dummy"><a href="index.html">Predicate logic</a></li>        
+        <li class="dummy"><a href="prop.html">Propositional logic</a></li>
+        <li class="dummy"><a href="json.html">Json</a></li>
+        <!-- <li class="dummy"><a href="predicate.html">Predicate logic</a></li> -->
         <li class="dummy"><a href="download.html">Download</a></li>        
         <li class="active"><a href="about.html">About</a></li> 
       </ul>
@@ -73,30 +104,33 @@
 
 <!-- Main jumbotron for a primary marketing message or call to action -->
 <div class="jumbotron" >
-  <div class="container" style="text-align: left; padding-left: 45px;">
-    <h1 class="jumbotron_title">About</h1>
-    <p class="jumbotron_caption"> 
-        <a href="http://en.wikipedia.org/wiki/Boolean_satisfiability_problem">solvers</a> for 
-        <a href="http://en.wikipedia.org/wiki/Propositional_calculus">propositional logic</a>
-    </p>
-
+  <div class="container nice-container" style="text-align: left; padding-left: 45px;">
+    <h1 class="jumbotron_title">About this site</h1>
 
 <div  style="margin-bottom: 20px;"></div>    
-<div style="font-family: Arial, Helvetica, sans-serif;">
-We help to study logic solvers by providing and collecting various 
-easy-to-use, browser-based javascript tools: starting with classical propositional formulas 
-and continuing with predicate logic later.
+<div style="font-family: Arial, Helvetica, sans-serif; color: #333">
+The goal is to help studying logic and solvers by providing 
+easy-to-use, pure browser-based javascript tools for both full classical predicate logic and propositional formulas.
+
 <p></p>
-All the code is self-contained, no-dependencies, easy-to-hack javascript under the
+The high-performance predicate logic prover <a href="https://github.com/tammet/gkc">gkc</a> is written in 
+C and available available under the
+<a href="https://en.wikipedia.org/wiki/Affero_General_Public_License">Affero GPL</a> licence
+as a command line tool on Linux, Windows and macOS and Wasm for running in the
+browser. The browser version on this site is inevitably crippled when compared to the 
+command-line version: the latter can utilize multiple cores, all the available memory, shared
+memory databases and has several additional options not available in the browser. 
+The browser version runs on a single core and has severe memory restrictions.
+<p></p>
+The educational propositional provers are self-contained, no-dependencies, easy-to-hack javascript code under the
 <a href="https://en.wikipedia.org/wiki/MIT_License">MIT licence</a>.
-<p></p>
 The focus is on simplicity, ease of use, hacking and experimenting, 
 not state of the art efficiency-wise.
 <p></p>
 Help and cooperation appreciated for improving the current code, writing and proposing new tools, etc. 
 See <a href="https://github.com/tammet/logictools">the github page</a>.
 <p></p>
-Site,  initial solvers and utilities written by Tanel Tammet (tanel.tammet at gmail.com) 
+Contact the author Tanel Tammet as (tanel.tammet at gmail.com). 
   </div>
 </div>
 </div>

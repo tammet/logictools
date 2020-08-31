@@ -1,0 +1,1434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head itemscope>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<meta name="description" content="Online logic solvers.">
+<meta name="author" content="Tanel Tammet">
+<meta name="keywords" content="logic, solvers, reasoning, propositions, dpll, resolution, truth table"> 
+
+<meta itemprop="itemtype" content="http://schema.org/SoftwareApplication">
+<meta itemprop="name" content="Logictools">
+<meta itemprop="description" content="Logic solvers and conversion tools.">
+<meta itemprop="url" content="http://logictools.org">
+<meta itemprop="operatingSystems" content="Linux, Windows">
+<meta itemprop="softwareApplicationCategory" content="WebApplication">
+
+<meta property="og:title" content="Logictools"> 
+<meta property="og:url" content="http://logictools.org"> 
+<meta property="og:site_name" content="Logictools"> 
+<meta property="og:type" content="website">
+<meta property="og:description" content="Logic solvers and conversion tools.">
+<meta property="fb:admins" content="tanel.tammet">
+
+<link rel="shortcut icon" href="logo.png">
+
+<title>Logictools</title>
+<!-- Bootstrap core CSS -->
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/css/bootstrap.min.css">
+<!-- Custom styles for this template -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono&family=Inconsolata&family=Roboto:wght@300&display=swap">
+<link rel="stylesheet" href="wdb.css">
+<style>
+html.wf-loading * {
+     opacity: 0;
+ }  
+.result {
+  padding: 15px; 
+  white-space: pre-wrap;
+}
+.intro {
+  padding: 15px; 
+}
+.nice-container {
+  border: 1;
+  border-width: 1px, 1px, 1px, 1px;
+  border-radius: 5px;
+  color: #666;
+}
+.result_wiblock {
+  padding: 0px; 
+  color: black;
+  font-family: 'Inconsolata','Roboto Mono','Courier New', Courier, monospace; 
+  border-width: 1px, 1px, 1px, 1px;
+  border-radius: 5px;
+} 
+.intro_wiblock {
+  padding: 0px; 
+  color: #333;  
+} 
+
+.syntax {  
+  width: 70px; height: 30px; text-align: center; 
+  padding: 0px 0px 1px 0px;  font-size: 12px;
+  line-height: 1.42; border-radius: 15px; 
+  background-color: #cccccc; color: #337ab7; margin-left: 15px;
+}         
+
+.btn-prove {
+  font-family: Arial, Helvetica, sans-serif;
+}
+/*
+.btn-convert {
+  background-color: #337ab7;
+}
+*/
+.btn-file {
+  position: relative;
+  overflow: hidden;
+}
+.btn-file input[type=file] {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 100px;
+  min-height: 100px;
+  font-size: 100%;
+  text-align: right;
+  filter: alpha(opacity=0);
+  opacity: 0;
+  outline: none;
+  background: white;
+  cursor: inherit;
+  display: block;
+}
+
+code {
+    padding: .1em .4em;
+    margin: 2px 5px 2px 5px;   
+    font-size: 100%;
+    color:black !important;
+    background-color: #f4f4f4 !important;
+    border-radius: 4px;
+    font-family: 'Inconsolata','Roboto Mono','Courier New', Courier, monospace;
+}
+
+pre {    
+    background-color: white !important;   
+}
+
+pre code {
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: 100% !important;
+    color: #222 !important;
+    background-color: white !important;
+    border-radius: 0 !important;
+}
+
+</style>
+<script src="https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js"></script>
+<script>
+  WebFont.load({
+    google: {
+      families: ['Roboto', 'Inconsolata']
+    }
+  });
+</script>
+<script>
+'use strict';
+
+var gkcoutput="";
+
+function useGkc(el) {
+  var el, placeid;
+  var input, output, textflag;
+  var inputarea, outputplace;
+  var arglist;
+  var sel, conversion, print_level, print_derived, strategy, seconds;
+ 
+  el=document.getElementById("intro");
+  el.innerHTML="";
+
+  var placeid=el.parentNode.id;
+  var div = document.getElementById(placeid+"_output"); 
+  //clearOutputByPlace(placeid); 
+  inputarea=document.getElementById("gkc_1_input");
+  outputplace=document.getElementById("result");  
+  input=inputarea.value;  
+  if (seemsJson(input)) textflag="-jstext";
+  else textflag="-text"   
+  
+  sel=document.getElementById("format_select");
+  conversion=sel.options[sel.selectedIndex].value;
+  if (conversion=="json" || conversion=="tptp") {
+    arglist=[textflag,input,"-"+conversion];
+  } else if (conversion=="simple" || conversion=="clauses") {
+    arglist=[textflag,input];  
+  } else {
+    conversion=conversion.substring(8);        
+    arglist=[textflag,input,"-"+conversion];
+  }
+
+  sel=document.getElementById("print_level");
+  print_level=sel.options[sel.selectedIndex].value;
+  arglist=arglist.concat(['-print',print_level]);
+
+  sel=document.getElementById("print_derived");
+  print_derived=sel.options[sel.selectedIndex].value;
+  if (print_derived=="on") {
+    arglist=arglist.concat(['-derived']);
+  }
+
+  sel=document.getElementById("strategy");
+  strategy=sel.value;
+  if (strategy) {
+    arglist=arglist.concat(['-strategytext',strategy]);
+  }
+
+  sel=document.getElementById("seconds");
+  seconds=sel.value;
+  if (seconds) {
+    seconds=parseInt(seconds);
+    if (isNaN(seconds)) seconds=5;
+    arglist=arglist.concat(['-seconds',""+seconds]);
+  } else {
+    arglist=arglist.concat(['-seconds',"5"]);
+  }
+
+  arglist=arglist.concat(['-parallel',"0"]);
+
+  //console.log(arglist);
+  gkcoutput="";
+  gkc(arglist);
+  //console.log("gkcoutput",gkcoutput);
+  document.getElementById("result").innerHTML=gkcoutput.trim();
+}  
+
+function seemsJson(str) {
+  var c, len;
+  var i,lpar=0,rpar=0,lbrack=0,lcurl=0,rcurl=0,rbrack=0,quotes=0,periods=0,perc=0;
+  var tptpsymbs=0, jssymbs=0;
+  
+  if (!str) return 0;
+  len=str.length;
+  for(i=0; i<len; i++) {
+    c=str[i];
+    if (c=='[') lbrack++;
+    else if (c==']') rbrack++;
+    else if (c=='{') lcurl++;
+    else if (c=='}') rcurl++;
+    else if (c=='(') lpar++;
+    else if (c==')') rpar++;
+    else if (c=='"') quotes++;
+    else if (c=='.') periods++;
+    else if (c=='%') perc++;
+  }
+  //console.log(lbrack,lcurl,rbrack,rcurl,quotes,periods);
+  if (!lbrack && !lcurl) return 0;
+  if (!rbrack && !rcurl) return 0;
+  if (!quotes) return 0;
+  if (!periods && quotes) return 1;
+  tptpsymbs=2*lpar+2*rpar+periods+perc;
+  jssymbs=lbrack+rbrack+2*lcurl+2*rcurl+2*quotes;
+  //console.log(jssymbs,tptpsymbs);
+  if (jssymbs>tptpsymbs) return 1;
+  else return 0;
+}
+
+function gkc(arglist) {
+  Module.callMain(arglist);
+}  
+
+function convert(el) {
+  var el,placeid;
+  var input, output, textflag;
+  var inputarea, outputplace;
+  var arglist;
+  var conversion;
+  var sel;
+
+  el=document.getElementById("intro");
+  el.innerHTML="";
+
+  var placeid=el.parentNode.id;
+  var div = document.getElementById(placeid+"_output"); 
+  //clearOutputByPlace(placeid); 
+  inputarea=document.getElementById("gkc_1_input");
+  outputplace=document.getElementById("result");  
+  input=inputarea.value; 
+  if (seemsJson(input)) textflag="-jstext";
+  else textflag="-text"   
+
+  sel=document.getElementById("conversion_select");
+  conversion=sel.options[sel.selectedIndex].value;
+  if (conversion=="json" || conversion=="tptp") {
+    arglist=[textflag,input,"-convert","-"+conversion];
+  } else if (conversion=="simple" || conversion=="clauses") {
+    arglist=[textflag,input,"-clausify"];  
+  } else {
+    conversion=conversion.substring(8);        
+    arglist=[textflag,input,"-clausify","-"+conversion];
+  }  
+  gkcoutput="";
+  //console.log(arglist);
+  gkc(arglist);
+  //console.log("gkcoutput",gkcoutput);
+  document.getElementById("result").innerHTML=gkcoutput;
+}
+
+function clearOutputByPlace(placeid) { 
+  var div = document.getElementById(placeid+"_output");
+  while(div.firstChild){
+    div.removeChild(div.firstChild);
+  }
+}
+
+function clearOutput(el) { 
+  document.getElementById("result").innerHTML="";
+  document.getElementById("proof_notes").innerHTML="";    
+}
+
+/*
+function clearInputByPlace(placeid) { 
+  document.getElementById(placeid+"_input").value="";  
+}
+*/
+
+function clearInput(el) {   
+  var sel;
+
+  sel=document.getElementById("select_example");
+  if (sel) sel.options.selectedIndex=0; 
+  document.getElementById("gkc_1_input").value=""; 
+  document.getElementById("input_notes").innerHTML="";
+}
+
+function fillOutput(placeid,text) { 
+  document.getElementById(placeid+"_output").innerHTML=text;  
+}
+
+// example selection
+
+function selectExample(level) {
+  var sel;
+  var value;
+  var data;
+  var notes;
+  var placeid,html,el;
+
+  el=document.getElementById("intro");
+  el.innerHTML="";
+  
+  if (level=='simple') sel=document.getElementById("select_example");
+  else sel=document.getElementById("select_advanced_example");
+  value=sel.options[sel.selectedIndex].value;
+
+  if (value=="examples") {
+    document.getElementById("input_notes").innerHTML="";
+    document.getElementById("proof_notes").innerHTML="";
+    document.getElementById("result").innerHTML="";
+    return;
+  }
+ 
+  placeid="example_"+value+"_";
+
+  el=document.getElementById(placeid+"input_code");
+  if (el) {
+    html=el.innerHTML; 
+    if (html) {
+      html=html.replace(new RegExp("&amp;","g"),"&");
+      html=html.replace(new RegExp("&gt;","g"),">");
+      html=html.replace(new RegExp("&lt;","g"),"<");
+      document.getElementById("gkc_1_input").value=html;
+    }
+  }
+  if (!el || !html) document.getElementById("gkc_1_input").value="";
+
+  el=document.getElementById(placeid+"input_notes");
+  if (el) {
+    html=el.innerHTML;
+    if (html) {      
+      document.getElementById("input_notes").innerHTML=html;
+    }
+  } 
+  if (!el || !html) document.getElementById("input_notes").innerHTML=""; 
+
+  el=document.getElementById(placeid+"proof_notes");
+  if (el) {
+    html=el.innerHTML;
+    if (html) {
+      document.getElementById("proof_notes").innerHTML=html;
+    }
+  }
+  if (!el || !html) document.getElementById("proof_notes").innerHTML="";  
+
+  html="<div class='click_prove'>Click the Prove button!</div>";
+  html="<button onclick='useGkc(this); return false;' ";
+  html+="class='btn btn-small btn-primary btn-prove'style='width: 70px;''>Prove</button>";
+  document.getElementById("result").innerHTML=html;
+}
+
+function switchAdvanced() {
+  if ($('#advanced_buttons').is(":hidden")) {
+    //$('#ctf_show_configuremenu').val('1');
+    //$('#configure_btn').attr('value',clstr[2]);
+  } else {
+    //$('#ctf_show_configuremenu').val('0');
+    //$('#configure_btn').attr('value',clstr[1]);
+  }  
+  $('#advanced_buttons').slideToggle('slow');
+};
+
+// simplified Module glue code originally produced by emscripten
+
+var Module={  
+  noInitialRun: true,
+  preRun:[],
+  postRun:[],
+  print: function(s) {
+    gkcoutput+=s+"\n";    
+  },
+  printErr:function(e){
+    arguments.length>1 && (e=Array.prototype.slice.call(arguments).join(" "));
+    if ((JSON.stringify(e)).includes("abort(OOM)")) {
+      location.reload();
+    } else if ((JSON.stringify(e)).includes("index out of bounds")) {
+      location.reload();
+    } else if ((JSON.stringify(e)).includes("timeout")) {
+      location.reload();
+    }
+    console.error(e);    
+  },
+  setStatus:function(e){ return 1 },
+  totalDependencies:0,
+  monitorRunDependencies:function(e){
+    this.totalDependencies=0; 
+    Module.setStatus(e ? "Preparing... ("+(this.totalDependencies-e)+"/"+this.totalDependencies+")"
+       : "All downloads complete.")
+  }
+};
+/*
+window.onerror=function(e){
+  console.error(e);
+  
+  // Module.setStatus("Exception thrown, see JavaScript console"),
+  // Module.setStatus=function(e){
+  //   e && Module.printErr("[post-exception status] "+e)
+  // }
+  
+}
+*/
+</script>
+</head>
+
+<body>
+
+<div id="fb-root"></div>
+
+<div class="navbar navbar-inverse navbar-static-top" style="background-color: #333333;">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">Logictools</a>
+    </div>
+    <div class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li class="dummy"><a href="index.html">Predicate logic</a></li>        
+        <li class="dummy"><a href="prop.html">Propositional logic</a></li>
+        <li class="active"><a href="json.html">Json</a></li>
+        <!-- <li class="dummy"><a href="predicate.html">Predicate logic</a></li> -->
+        <li class="dummy"><a href="download.html">Download</a></li>        
+        <li class="dummy"><a href="about.html">About</a></li> 
+      </ul>
+    </div><!--/.navbar-collapse -->
+  </div>
+</div>
+
+<!-- content after titlebar -->
+
+
+<div class="container">
+  <div class="row">
+    <div class="col-md-12 wblock wblock1">
+    
+    <!--------------------------- --->
+
+<h2 style="font-family: 'Roboto',Arial,Helvetica,sans-serif; font-weight: 300; line-height: 1.1;">Solve JSON and JSON-LD examples:
+  <button type="button" class="btn btn-default" 
+         onclick="gid('syntax').style.display='block'; document.location='#syntax'; "
+         style="
+          width: 70px; height: 30px; text-align: center; 
+          padding: 0px 0px 1px 0px;  font-size: 12px;
+          line-height: 1.42; border-radius: 15px; 
+          background-color: #cccccc; color: #337ab7; margin-left: 15px;"
+         >help</button>
+</h2>                
+
+  <div class="form-inline" method="post" osnubmit="return false;">
+    <div class="wblock">      
+      <div id="gkc_1">     
+        <textarea class="form-control" id="gkc_1_input" spellcheck="false"
+        style="height: 200px; width:100%; margin-bottom: 20px; color: black;
+        font-family: 'Inconsolata','Roboto Mono','Courier New', Courier, monospace; ">[ // a simple example: find a grandson of john 
+
+["father","john","pete"],
+["father","pete","mark"],
+["forall", ["X","Y","Z"], [[["father","X","Y"], "&", ["father","Y","Z"]], "=>", ["grandfather","X","Z"]]],
+
+["forall", ["X"], [["grandfather","john","X"],"=>",["$ans","X"]]]
+]</textarea>
+        <button onclick="useGkc(this); return false;" class="btn btn-small btn-primary btn-prove"
+        style="width: 70px;">Prove</button>
+        <!-- <div style="display: inline-block; width: 50px; text-align: center;">simple</div> -->
+        <select class="form-control" style="width: 180px;" id="select_example"
+          onchange="selectExample('simple')">
+          <option value="examples">examples</option>
+          <option value="1">json basics</option>
+          <option value="2">more connectives</option>
+          <option value="3">answers</option>
+          <option value="4">free variables</option>
+          <option value="5">equality</option>
+          <option value="6">gf with equality</option>
+          <option value="7">json-ld basics</option>
+          <option value="8">json maps in logic</option>
+          <option value="9">json-ld context</option>
+          <option value="10">nested maps and arithmetic</option>
+          <option value="11">named graphs and quads</option>
+          <option value="12">the list datatype</option>
+          <option value="13">distinct symbols</option>        
+        </select>       
+        <div style="display: inline-block; width: 20px; text-align: center;">or</div>
+        <span class="btn btn-default btn-file">
+        Browse<input type="file" id="files" name="files"  
+         value="">
+        </span>           
+        <div style="display: inline-block; width: 25px;"></div>
+        <button onclick="convert(this); return false;" class="btn btn-small btn-default btn-convert"
+          >Convert to</button>
+          <select class="form-control" style="width: 103px;" id="conversion_select">
+            <option value="simple">simple</option>           
+            <option value="tptp">tptp</option>
+            <option value="json">json</option>
+            <option value="clauses">clauses</option>
+            <option value="clauses_json">json clauses</option>
+            <option value="clauses_tptp">tptp clauses</option>          
+          </select>
+        <div style="display: inline-block; width: 20px;"></div>  
+        <button onclick="clearOutput(this); switchAdvanced(); return false;" 
+          class="btn btn-small btn-default"
+        >Advanced</button>                          
+        <button onclick="clearOutput(this); return false;" class="btn btn-small btn-default"
+        >Clear result</button>
+        <button onclick="clearInput(this); return false;" class="btn btn-small btn-default"
+        >Clear input</button>
+        <a href="#solveModal" data-toggle="modal" class="qlink">
+          <button type="button" class="btn btn-default" style=" 
+           width: 30px; height: 30px; text-align: center; padding: 6px 0;  font-size: 12px;
+           line-height: 1.42; border-radius: 15px; 
+           background-color: #cccccc; color: #337ab7; margin-left: 15px;">?</button>
+        </a>         
+        <div id="advanced_buttons" style="padding-top: 15px; display: none;">                    
+          <div style="display: inline-block; width: 62px; text-align: center;">Seconds</div>
+          <input type="text" class="form-control" id="seconds" value="5" style="width: 50px"></input>
+          <div style="display: inline-block; width: 65px; text-align: center;">print level</div>
+          <select class="form-control" style="width: 125px;" id="print_level">
+            <option value="10">minimal</option>
+            <option value="11">+ strategy</option>
+            <option value="12">+ runs</option>
+            <option value="15">+ statistics</option>
+            <option value="20">+ given</option>
+            <option value="40">+ derived</option>
+            <option value="50">+ details</option>                       
+            <option value="60">+ datastructures</option> 
+          </select>
+          <div style="display: inline-block; width: 50px; text-align: center;">format</div>
+          <select class="form-control" style="width: 90px;" id="format_select">
+            <option value="json">json</option>
+            <option value="simple">simple</option>            
+            <option value="tptp">tptp</option>                  
+          </select> 
+          <div style="display: inline-block; width: 85px; text-align: center;">show&nbsp;derived</div>
+          <select class="form-control" style="width: 65px;" id="print_derived">
+            <option value="off">off</option>
+            <option value="on">on</option>                                  
+          </select>
+          <div style="display: inline-block; width: 30px; text-align: center;"></div>            
+          <a href="#advancedModal" data-toggle="modal" class="qlink">
+            <button type="button" class="btn btn-default" style=" 
+             width: 30px; height: 30px; text-align: center; padding: 6px 0;  font-size: 12px;
+             line-height: 1.42; border-radius: 15px; 
+             background-color: #cccccc; color: #337ab7; margin-left: 12px;">?</button></a>
+          <p>              
+          <textarea class="form-control" id="strategy" spellcheck="false"
+           style="height: 100px; width:100%; margin-bottom: 20px; margin-top: 15px;"
+           placeholder="Strategy as json text"></textarea>
+        </div>
+      </div>      
+    </div>
+    <p>                  
+    </div>
+
+<div id="intro" class="container">
+  <div class="row">
+    <div class="col-md-12 wblock wblock1">     
+        <div class="wiblock intro_wiblock nice-container">            
+          <div id="introtext" class="intro">
+Read, prove and modify <a href="https://en.wikipedia.org/wiki/JSON">JSON</a> syntax examples
+for predicate logic as defined in the
+<a href="https://github.com/tammet/json-ld-logic">JSON-LD-LOGIC</a> proposal
+with the following goals:
+<p>
+  <!--
+    <ul>
+<li>Providing a simple format for the programmatic management, parsing and printing of logical problems and proofs.
+<li>Compatibility with the <a href="http://tptp.org">TPTP</a> language used by 
+most high-end full FOL reasoners, as described in the  
+<a href="http://tptp.org/TPTP/TR/TPTPTR.shtml#ProblemPresentation">TPTP technical manual</a>.
+<li>Compatibility with <a href="https://json-ld.org/">JSON-LD</a>,  
+see the <a href="https://www.w3.org/TR/json-ld11/">W3C recommendation</a>.
+</ul>
+  -->
+<p>Providing a simple format for the programmatic management, parsing and printing of logical problems and proofs.
+<br>Compatibility with the <a href="http://tptp.org">TPTP</a> language used by 
+most high-end full FOL reasoners, as described in the  
+<a href="http://tptp.org/TPTP/TR/TPTPTR.shtml#ProblemPresentation">TPTP technical manual</a>.
+<br>Compatibility with <a href="https://json-ld.org/">JSON-LD</a>,  
+see the <a href="https://www.w3.org/TR/json-ld11/">W3C recommendation</a>.
+
+          </div>
+        </div>
+    </div>
+  </div>
+</div>
+
+<p>
+<div id="input_notes"></div>
+<p>
+<h2>Result:</h2>
+
+<div class="container">
+  <div class="row">
+    <div class="col-md-12 wblock wblock1">
+        <div class="wiblock result_wiblock">  
+          <div id="result" class="result"></div>
+        </div>
+    </div>
+  </div>
+</div>
+<p>
+  <div id="proof_notes"></div>
+<p>
+
+<!-- syntax description is initially hidden -->
+
+<div id="syntax" style="display: none">
+
+
+  <button onclick="gid('syntax').style.display='none'; return false;"
+  style="margin-top: 20px;margin-bottom: 0px;" 
+  class="btn btn-small btn-default">Hide help</button>   
+  
+  
+  <div class="container" style="margin-top: 5px; margin-bottom: 15px; 
+    margin-left:0px; padding-left:5px;">
+  <h3>What is this?</h3>
+  </div>
+  
+  
+  <div class="container">
+    <!-- Example row of columns -->
+    <div class="row">
+       <div class="col-md-12 wblock wblock1">
+        <div class="wiblock wiblock_full">
+  <p>  
+ A playground for the proposed 
+ <a href="https://github.com/tammet/json-ld-logic">JSON-LD-LOGIC</a> syntax for 
+ <a href="https://en.wikipedia.org/wiki/First-order_logic">first order predicate logic</a>
+ formulas: proving, answering questions
+ and converting between different syntaxes for logic.
+ <p>
+ The JSON-LD-LOGIC syntax has the following goals:
+ <ul>
+ <li>Providing a simple format for the programmatic management, 
+   parsing and printing of logical problems and proofs.
+ <li>Compatibility with the TPTP language used by most high-end full FOL reasoners, 
+     as described in the 
+     <a href="http://tptp.org/TPTP/TR/TPTPTR.shtml#ProblemPresentation">TPTP technical manual</a>.
+ <li>Compatibility with
+   <a href="https://json-ld.org/">JSON-LD</a>, see the 
+   <a href="https://www.w3.org/TR/json-ld11/">W3C recommendation</a>. 
+ </ul>  
+ <p>    
+  The toolkit is built around a high-performance reasoner
+  <a href="https://github.com/tammet/gkc">gkc</a> (see
+  <a href="https://link.springer.com/chapter/10.1007%2F978-3-030-29436-6_32">the paper</a>)
+  and runs in the browser using 
+  <a href="https://en.wikipedia.org/wiki/WebAssembly">Wasm</a> without any server
+  involvement. For more advanced use you may want to
+  download the command-line version.
+  <p>
+  Use it for learning logic and experimenting with a reasoner.
+  <p>
+  Note: the gkc implementation allows the use of both line comments <code>//</code> and
+  multi-line comments <code>/* ...: */</code> in JSON.
+  <p>  
+  For more details about logic and automated reasoning, have a look at the
+  <i>help</i> text of the <a href="index.html">Predicate logic</a> page
+  and  go through the explanations in the <i>simple examples</i> selection
+  there.
+  <p>
+  The examples on the current page illustrate the JSON-LD-LOGIC syntax, 
+  its conversion to 
+  <a href="http://tptp.org/TPTP/TR/TPTPTR.shtml#ProblemPresentation">TPTP format</a>
+  and other specifics. It is recommended to go through these sequentially in
+  a tutorial-like manner.
+  <p>
+  
+  </div></div></div></div>
+
+  <button onclick="gid('syntax').style.display='none'; return false;" 
+  style="margin-top: 20px;"
+        class="btn btn-small btn-default">Hide help</button> 
+</div>
+    
+    <!-------------------------- --->
+    </div>
+  </div>
+</div>
+
+<!-- footer -->
+<!--
+<div class="ofooter">  
+  <div class="col-md-12 container ifooter">
+  </div>  
+</div> 
+-->
+<div style="height:50px; width: 100%"> </div>
+
+<!-- modal help texts --->
+
+
+<div class="modal fade" id="solveModal" tabindex="-1" role="dialog" 
+    aria-labelledby="solveModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content modal_login">        
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal">
+            <span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+            <h4 class="modal-title" id="solveModalLabel" style="color: black;">Prove and convert logic in JSON format</h4>
+      </div>
+      <div class="modal-body">      
+        <p>  
+        This is a playground for the proposed 
+        <a href="https://github.com/tammet/json-ld-logic">JSON-LD-LOGIC</a> syntax for logic, with the
+        following goals:
+        <ul>
+        <li>Providing a simple format for the programmatic management, 
+          parsing and printing of logical problems and proofs.
+        <li>Compatibility with the TPTP language used by most high-end full FOL reasoners, 
+            as described in the 
+            <a href="http://tptp.org/TPTP/TR/TPTPTR.shtml#ProblemPresentation">TPTP technical manual</a>.
+        <li>Compatibility with
+          <a href="https://json-ld.org/">JSON-LD</a>, see the 
+          <a href="https://www.w3.org/TR/json-ld11/">W3C recommendation</a>. 
+        </ul>  
+        <p>
+        Basic use: pick a problem from the two boxes of examples, read the explanations and
+        press <i>Prove</i>. You can select your own problem files, edit or modify examples
+        directly in the text area of the browser. The prover runs in your browser using
+        Wasm as as a single process. The proofs are also presented in JSON by default.
+        <p>
+        If you are new to this, it is helpful to first try out and read the problems 
+        sequentially from the <i>simple examples</i>  of the 
+        <a href="index.html">Predicate logic</a>, organized as a tutorial. The
+        <i>help</i> text there is also useful.
+        <p>
+        The underlying machinery on the current page is exactly the same as on the
+        <a href="index.html">Predicate logic</a> page.
+        <p>
+        Press the <i>Advanced</i> button for selecting the options such as time limit (default
+        5 seconds), detail level of the proof and proof format. You can also select and compose
+        your own search strategies.
+        <p>       
+        The <i>Convert to</i> button does not attempt to prove a formula,
+        but converts it to the selected format. The <i>... clauses</i> formats convert the
+        formula to the 
+        <a href="https://en.wikipedia.org/wiki/Conjunctive_normal_form">clause</a> or conjunctive
+        normal form actually used for search. The default <i>simple format</i> is explained in the 
+        <i>help</i>
+        text of the <a href="index.html">Predicate logic</a> menu,
+        the tptp format is a de facto standard format for most high-end provers (see the 
+        <a href="http://tptp.org/TPTP/TR/TPTPTR.shtml#ProblemPresentation">TPTP technical manual</a>)
+        and the json format follows the proposed  
+        <a href="https://github.com/tammet/json-ld-logic">JSON-LD-LOGIC</a> syntax.
+      </div>
+    </div><!-- /.modal-content -->
+  </div><!-- /.modal-dialog -->
+</div><!-- /.modal -->
+
+
+<div class="modal fade" id="advancedModal" tabindex="-1" role="dialog" 
+    aria-labelledby="advancedModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content modal_login">        
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal">
+            <span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+            <h4 class="modal-title" id="advancedModalLabel">Build</h4>
+      </div>
+      <div class="modal-body"> 
+        <p>
+        You can set the time limit in seconds. Beware that for long-running search processes the
+        browser may regularly propose to stop the script. The prover selects a number (typically
+        ca 30) different search strategies and tries out these sequentially, repeating the process
+        with the incrementally growing time limits. These <i>internal</i> time limits start
+        at 0.1 seconds for one search attempt. 
+        <p>
+        You can increase the print level to gain more information about what is going
+        on during the search, automatically selected search strategies and statistics. In particular,
+        selecting <i>Show derived: on</i> will cause the prover to print out all the derived clauses after
+        the search has successfully stopped. Beware: the amount can be enormous.
+        <p>
+        You can also enter your own search strategies and settings instead of using the automatically
+        generated ones: please have a look at the <i>complex: strategy</i> example under 
+        <a href="index.html">Predicate logic</a> page for details. For modern provers the search strategy
+        selection typically dominates over all the other considerations and optimizations.
+        </li>
+        </ul>
+      </div>
+    </div><!-- /.modal-content -->
+  </div><!-- /.modal-dialog -->
+</div><!-- /.modal -->
+
+<!-- raw examples text -->
+
+<div hidden>
+
+<div id="example_1_input_notes"><h3>Example 1 for json basics</h3>
+
+<p>This is a simple example for the basics of the json syntax for predicate logic
+as presented in the <a href="https://github.com/tammet/json-ld-logic">JSON-LD-LOGIC</a>
+specification.
+Later examples will show other features of the json syntax like functions, equality, 
+json-ld syntax conversion, lists, arithmetics, unique symbols and such.</p>
+
+<p>For the introductory examples of logic and automated reasoning without the use or
+focus on the JSON syntax you may want to check the <i>Solve predicate logic</i> top menu.
+
+<p>Here we first have two facts in the json syntax where predicates (names of relations)
+are the first element of a list: <code>["father","john","pete"]</code> means 
+<i>john is the father of pete</i>. We then have a grandfather rule using a quantifier <code>"forall"</code>
+for three variables (use only strings with the capital first letter for variables), 
+<code>"&"</code> meaning "and", <code>"=>"</code> meaning "implies".
+</p>
+<p>
+We will ask whether from these 
+two facts and a rule we can derive that there exists somebody who has <i>john</i> as a grandfather: the
+last formula is a negation of this question, using <code>"not"</code> with the obvious meaning. 
+The whole list of statements is treated as a conjunction (<i>and</i>) of all statements. 
+</p>
+
+<p>Why the negation and contradiction? This is just a convenient way to simplify
+the problem. Suppose we want to prove <code>a &amp; b =&gt; a</code>. This is true
+if and only if <code>-(a &amp; b =&gt; a)</code> is false. Now, the last formula 
+is equivalent to <code>a &amp; b &amp; -a</code>. Thus 
+the input facts and rules stay as they are, and we only negate the conclusion to be proved.
+To summarize, giving a goal to be proved from axioms (i.e. known facts / rules) as a negated 
+statement is just a convenient way to organize proof search and there is nothing really
+special about it.</p>
+</div>
+
+<p>Although comments are not allowed in standard json, gkc accepts both line 
+comments <code>//</code> and multi-line comments <code>/* .... */</code> in json.
+</p>
+
+<p>The order of statements in the list is not really important, although it may cause minor
+and essentially unpredictable differences in search behaviour. Essentially, gkc
+creates and tries out its own search strategies, like SQL databases. It does not
+follow a pre-determined predictable search strategy like PROLOG.</p>
+
+<p>Input file example1.txt:</p>
+
+<pre><code id="example_1_input_code">[
+["father","john","pete"],
+["father","pete","mark"],
+["forall", ["X","Y","Z"], [[["father","X","Y"], "&", ["father","Y","Z"]], "=>", ["grandfather","X","Z"]]],
+
+// negated question: does there exist somebody who has john as a grandfather?
+["forall", ["X"], ["not",["grandfather","john","X"]]]
+]
+</code></pre>
+
+<div id="example_1_proof_notes">
+
+<p>The output is a json object with two keys:
+<ul>
+<li> <code>result</code> indicates whether the proof was found,
+<li> <code>answers</code> contains a list of all answers and proofs for these answers. 
+  Here we did not ask to find a concrete person, so we have only 
+  a single answer containing just a <code>proof</code> key indicating a list with the 
+  numbered steps of the proof found: each step is either a used input fact / rule or a 
+  derived fact / rule.</p>
+</ul>
+
+<p>The formulas in the proof are always just lists of atoms (called <i>clauses</i>) 
+  treated as a disjunction (<i>or</i>).
+<p>Observe that 
+<ul>
+<li><code>["-father","?:X","pete"]</code> means the same as <code>["not" ["father","?:X","pete"]]</code>.
+<li>Strings prefixed by <code>?:</code> like <code>?:X</code> are <i>free variables</i>
+   implicitly assumed to be quantified by "forall".
+</ul>
+<p><code>["in","frm_N" ]</code> means that the clause stems from the fact/rule number 
+   <i>N</i> given as input.</p>
+<p><code>["mp", 1, 2]</code>  means that this <i>clause</i>
+was derived by modus ponens (i.e. the 
+<a href="https://en.wikipedia.org/wiki/Resolution_(logic)">resolution rule</a>)
+from previous steps 1 and 2. More concretely, the first literals of both were cut off and
+the rest were glued together. <code>["mp", 3, 4, 5]</code> means that the clause was first 
+derived from clauses 3 and 4 and then the clause 5 was used for and additional
+simplifying resolution step.</p>
+
+<p>The <a href="https://en.wikipedia.org/wiki/Resolution_(logic)">Resolution (logic) wiki page</a> 
+is a good short intro to the general principles of the derivation rules with the 
+<a href="http://lambda.ee/w/images/0/06/Geoffreasoningnotes.pdf">course materials of Geoff Sutcliffe</a> 
+being a suitable continuation towards deeper understanding. However, 
+our examples are understandable without in-depth theoretical background.</p>
+
+<p>Try to modify the example by removing the statement <code>["father","john","pete"],</code> and
+run the gkc prover again. After ca one second gkc will stop and output</p>
+
+<pre><code>{"result": "proof not found"}</code></pre>
+
+<p>Although the task is trivial, gkc does not attempt to be clever and tries out a large number
+of search strategies: this is why it takes a second to terminate. You can click on <i>Advanced</i> and
+select <i>Print level</i> value <i>+ runs</i> or any later option in the select list to see the whole process: 
+later options will give huge amounts of output.</p>
+
+<p>In case gkc does not understand the syntax of the input file it will give a json-formatted
+error typically indicating a culprit line and piece of input like this:</p>
+<pre><code>{"error": "syntax error, unexpected URI, expecting '.': file example1.txt place 'as' in line 3:
+foo bar ("}</code></pre> or <pre><code>{"error": "json syntax error: lexical error: invalid char in json text.
+"}</code></pre>
+
+You may also want to <b>convert</b> the example to some other language by clicking on
+the <i>Convert to</i> button: first select an output language from the box after the button before
+conversion.</div>
+
+
+
+<div id="example_2_input_notes"><h3>Example 2 for more connectives</h3>
+We use the equivalence <code>"&lt;=>"</code>, disjunction <code>"|"</code>
+and <code>"not"</code> connectives for a slightly more 
+complicated family example, this time defining the
+grandfather predicate as either a paternal or maternal grandfather.
+You can use <code>"not"</code>, <code>"~"</code> or <code>"-"</code>
+for logical negation <i>not</i>: they have the same meaning.
+The tilde  <code>~</code> and minus <code>-</code> characters can be used as a prefix of a 
+symbol to denote negation: the last line could be equivalently written as
+<code>["forall", ["X"], ["-grandfather","john","X"]]</code>.
+
+  </div>
+  <pre>
+  <code id="example_2_input_code">[
+["father","john","eve"],
+["mother","eve","mark"],
+["forall", ["X","Y","Z"], [
+  [[["father","X","Y"], "&", ["father","Y","Z"]],
+    "|", 
+    [["father","X","Y"], "&", ["mother","Y","Z"]]],
+  "<=>", 
+  ["grandfather","X","Z"]]
+],
+["forall", ["X"], ["not",["grandfather","john","X"]]]
+]
+  </code>
+  </pre>
+  <div id="example_2_proof_notes">
+  </div>
+
+<div id="example_3_input_notes"><h3>Example 3 for answers</h3>
+
+<p>Like example 1, but we want to find a concrete person as an answer: we use the special
+  <code>"$ans"</code> predicate for this. Deriving a clause containing only atoms with the
+    <code>"$ans"</code> predicate means that the proof has been found.
+</div>
+
+<pre><code id="example_3_input_code">[
+["father","john","pete"],
+["father","pete","mark"],
+["forall", ["X","Y","Z"], [[["father","X","Y"], "&", ["father","Y","Z"]], "=>", ["grandfather","X","Z"]]],
+
+["forall", ["X"], [["grandfather","john","X"],"=>",["$ans","X"]]]
+]
+</code></pre>
+
+<div id="example_3_proof_notes">
+<p>Notice that gkc output contains a key <code>"answer": [["$ans","mark"]],</code> 
+indicating the substitution made for <code>X</code>: <i>mark</i> is the answer we were looking for.</p>
+
+<p>Modify the example and try out the line</p>
+
+<pre><code>["forall", ["X","Y"], [["grandfather","Y","X"],"=>",["$ans","Y","X"]]]
+</code></pre>
+
+<p>You will get <code> [["$ans","john","mark"]]</code> in the output.
+</div>
+
+
+
+
+<div id="example_4_input_notes"><h3>Example 4 for free variables and syntactic sugar</h3>
+
+<p>
+Strings prefixed by <code>?:</code> like <code>"?:X"</code> are <i>free variables</i> 
+implicitly assumed to be quantified by <i>forall</i>.
+</p>
+<p>
+The <code>["if" ... "then" ....]</code> construction is a convenient syntax instead
+of implication: a list of formulas before <code>"then"</code> is treated
+as a conjunction premiss of the implication and the list after 
+<code>"then"</code> as a disjunction consequent of the implication. For example,
+<code>["if", "a", "b", "c", "then", "d", "e"]</code> is translated as 
+<code>[["a","&","b","&","c"], "=>", ["d","|","e"]]</code>.
+</p>
+<p>
+The <code>"&lt;="</code> connective stands for implication from right to left. 
+The full list of infix binary connectives follows the TPTP language:
+<ul>
+<li><code>"|"</code> for disjunction,
+<li><code>"&"</code> for conjunction, 
+<li><code>"&lt;=>"</code> for equivalence, 
+<li><code>"=>"</code> for implication, 
+<li><code>"&lt;="</code> for reverse implication, 
+<li><code>"&lt;~>"</code> for non-equivalence (XOR), 
+<li><code>"~|"</code> for negated disjunction (NOR), 
+<li><code>"~&"</code> for negated conjunction (NAND), 
+<li><code>"@"</code> for application, used mainly in the higher-order context in TPTP.
+</ul>
+</div>
+<pre>
+<code id="example_4_input_code">[
+[["father","John","pete"]],
+[["father","pete","mickey"], ["father","pete","mark"]],
+["if", ["father","?:X","?:Y"], ["father","?:Y","?:Z"], "then", ["grandfather","?:X","?:Z"]],
+[["$ans","?:X"], "<=", ["grandfather","John","?:X"]]
+]
+</code>
+</pre>
+<div id="example_4_proof_notes">
+</div>
+
+
+<div id="example_5_input_notes"><h3>Example 5 for equality</h3>
+Predicates <code>"="</code> and <code>"!="</code> stand for equality and inequality and can occur
+either in the middle of a three-element list (infix form) or as a first element of the
+list (prefix form).
+</div>
+<pre>
+<code id="example_5_input_code">[
+[["father","john"],"=","pete"],
+[["father","pete"],"=","mark"],
+[[["=",["father",["father","john"]],"?:X"]],"=>",["$ans","?:X"]]
+]
+</code>
+</pre>
+<div id="example_5_proof_notes">
+</div>
+
+<div id="example_6_input_notes"><h3>Example 6 for the grandfather with equality</h3>
+This example reformulates the <i>grandfather</i> relation using equalities.
+</div>
+<pre>
+<code id="example_6_input_code">[
+["=",["father","john"],"pete"],
+["=",["father","mike"],"pete"],
+["=",["mother","john"],"eve"],
+["=",["mother","mike"],"eve"],
+["=",["father","pete"],"mark"],
+["=",["mother","eve"],"mary"],
+["grandfather",["father",["father","?:0"]],"?:0"],
+["grandfather",["father",["mother","?:0"]],"?:0"],
+[["grandfather","mark","?:0"],"=>",["$ans","?:0"]]
+]
+</code>
+</pre>
+<div id="example_6_proof_notes">
+</div>
+
+<div id="example_7_input_notes"><h3>Example 7 for json-ld basics</h3>
+
+JSON-LD <i>objects</i> aka <i>maps</i> are interpreted as logic and can be mixed with the
+core fragment constructions written as lists in the previous examples.
+<p>
+Following the JSON-LD semantics in
+<a href="https://en.wikipedia.org/wiki/Resource_Description_Framework">RDF</a> 
+the objects have an explicit or implicit <code>"@id"</code> key value while
+the other <i>key: value</i> pairs are interpreted 
+as RDF triplets  <i>subject, property, value</i> where <i>subject</i> is the
+value of the <code>"@id"</code> key. These
+triplets are represented using the <code>$arc</code> predicate:
+there is an <i>arc</i> with the label <i>property</i> from the <i>subject</i> to <i>value</i>.
+<p>
+The first expression in this example is thus converted to
+<code>["$arc","pete","father","john"]</code>.
+<p>
+The <code>"@logic"</code> key is used for inserting logical formulas into
+the json objects. The <code>"@name"</code> key is used as non-logical 
+metainformation, indicating a name of the input formula shown in proofs.
+<p>
+The convenience key <code>"@question"</code> automatically forms
+the implication with the <code>"$ans"</code> predicate with all the free
+variables in its value as arguments.
+</div>
+<pre>
+<code id="example_7_input_code">[
+{"@id":"pete", "father":"john"},
+{"@id":"mark", "father":"pete"},
+{"@name":"gfrule",
+  "@logic": ["if", ["$arc","?:X","father","?:Y"],["$arc","?:Y","father","?:Z"], "then", ["$arc","?:X","grandfather","?:Z"]]
+},
+{"@question": ["$arc","?:X","grandfather","john"]}
+]
+</code>
+</pre>
+<div id="example_7_proof_notes">
+Notice that
+<ul>
+<li>The proof replaces json object/map constructions by the list constructions
+using the <code>$arc</code> predicate. 
+<li>The value of the <code>"@question"</code> key is transformed to
+  <code>[["$arc","?:X","grandfather","john"], "=>", ["$ans","?:X"]]</code>.
+<li>The name <code>"gfrule"</code> is used in the proof.
+</ul>  
+</div>
+
+<div id="example_8_input_notes"><h3>Example 8 for json maps in logic and if-then</h3>
+Exactly as the previous example, but using objects/maps <i>inside</i> the <code>"@logic"</code> 
+value, transformed to the conjunction of the logical atoms led by the <code>"$arc"</code>
+predicate.
+</div>
+<pre>
+<code id="example_8_input_code">[
+{"@id":"pete", "father":"john"},
+{"@id":"mark", "father":"pete"},
+{"@name":"gfrule",
+  "@logic": ["if", {"@id":"?:X","father":"?:Y"}, {"@id":"?:Y","father":"?:Z"}, "then", {"@id":"?:X","grandfather":"?:Z"}]
+},
+{"@question": {"@id":"?:X","grandfather":"john"}}
+]
+</code>
+</pre>
+<div id="example_8_proof_notes">
+The proof is identical to the proof of the previous example.
+</div>
+
+<div id="example_9_input_notes"><h3>Example 9 for the json-ld context</h3>
+
+An important feature of JSON-LD is the use of the <code>"@context"</code> key to specify,
+for example, namespaces, symbol mapping and types.
+<p>
+JSON-LD-LOGIC expands strings in the object/map by the JSON-LD <code>"@context"</code>
+expansion rules.
+<p>
+This example demonstrates the use of <i>multiple values</i> in
+<code>["mark","michael"]</code> and the JSON-LD <code>"@context"</code> 
+<code>"@base"</code> and  <code>"@type"</code> keys.
+</div>
+<pre>
+<code id="example_9_input_code">[
+{ "@context": {
+    "@base": "http://people.org/",
+    "@vocab":"http://bar.org/", 
+    "father":"http://foo.org/father"
+  },
+  "@id":"pete", 
+  "@type": "male",
+  "father":"john",
+  "son": ["mark","michael"],
+  "@logic": ["forall",["X","Y"],
+              [[{"@id":"X","son":"Y"}, "&", {"@id":"X","@type":"male"}], 
+              "=>", 
+              {"@id":"Y","father":"X"}]
+  ]
+},      
+["if", {"@id":"?:X","http://foo.org/father":"?:Y"}, {"@id":"?:Y","http://foo.org/father":"?:Z"}, 
+ "then", {"@id":"?:X","grandfather":"?:Z"}
+],
+{"@question": {"@id":"?:X","grandfather":"john"}}
+]
+</code>
+</pre>
+<div id="example_9_proof_notes">
+Notice how the JSON-LD namespace rules in <code>"@context"</code> transform the property names.
+The same property names outside the <code>"@context"</code> scope have to be presented
+as absolute values in a long form.
+</div>     
+
+<div id="example_10_input_notes"><h3>Example 10 for nested objects and arithmetic</h3>
+<p>
+JSON-LD interprets JSON objects/maps as key values as new things with their
+own id-s and properties.
+</p>
+<p>
+JSON-LD-LOGIC interprets and converts such values correspondingly.
+<p>
+Nesting can be arbitrarily deep and nested objects/maps may contain the <code>@logic</code> 
+key at any level. 
+<p>
+The current example contains a nested <code>"child"</code> value indicating that
+the person we describe (with no <i>id</i> given) has two children with ages
+10 and 2, but nothing more is known about them. We also know the person
+has a father `john`. The rules state the son/daughter and mother/father
+correspondence, define children with ages between 19 and 6 as schoolchildren
+and define both the maternal and paternal grandfather. The question is to 
+find a schoolchild with <code>"john"</code> as a grandfather. 
+<p>
+Also, notice the use of the arithmetic predicate <code>"$less"</code>.
+<p>
+The following TPTP prefix form arithmetic predicates and functions on
+integers and reals are used with the same meaning as defined 
+in the <a href="http://www.tptp.org/TPTP/TR/TPTPTR.shtml#Arithmetic">TPTP arithmetic system</a>:
+<ul>
+<li>Type detection predicates <code>"$is_int", "$is_real"</code>.
+<li>Comparison predicates <code>"$less"`, `"$lesseq"`, `"$greater"`, `"$greatereq"</code>.
+<li>Type conversion functions <code>"$to_int"`, `"$to_real"</code>.
+<li>Type conversion functions <code>"$to_int"`, `"$to_real"</code>.
+<li> Arithmetic functions on integers and reals:<code>
+`"$sum", "$difference", "$product", 
+"$quotient", "$quotient_e",
+"$remainder_e", "$remainder_t", "$remainder_f", 
+"$floor", "$ceiling",
+"$uminus", "$truncate", "$round"</code>.
+</ul>
+</div>
+<pre>
+<code id="example_10_input_code">[
+{ "@context": {    
+    "@vocab":"http://foo.org/",   
+    "age":"hasage"
+  },
+  "father":"john",
+  "child": [
+    {"age": 10}, 
+    {"age": 2} 
+  ],      
+  "@logic": ["and",    
+      ["forall",["X","Y"],[{"@id":"X","child":"Y"}, "<=>", ["or",{"@id":"Y","father":"X"},{"@id":"Y","mother":"X"}]]],     
+      ["forall",["X","Y"],[{"@id":"Y","child":"X"}, "<=>", ["or",{"@id":"Y","son":"X"},{"@id":"Y","daughter":"X"}]]]
+  ]  
+},      
+["if", {"@id":"?:X","http://foo.org/hasage":"?:Y"}, ["$less",6,"?:Y"], ["$less","?:Y",19], 
+ "then", {"@id":"?:X", "@type": "schoolchild"}],
+["if", {"@id":"?:X","http://foo.org/father":"?:Y"}, {"@id":"?:Y","http://foo.org/father":"?:Z"}, 
+ "then", {"@id":"?:X","grandfather":"?:Z"}],
+["if", {"@id":"?:X","http://foo.org/mother":"?:Y"}, {"@id":"?:Y","http://foo.org/father":"?:Z"}, 
+ "then", {"@id":"?:X","grandfather":"?:Z"}],
+
+{"@question": [{"@id":"?:X","grandfather":"john"}, "&", {"@id":"?:X","@type":"schoolchild"}]}
+]
+</code>
+</pre>
+<div id="example_10_proof_notes">
+A new unique <i>blank node</i> <code>"_:crtd_..."</code> is built for each object/map 
+without an explicit <code>"@id"</code> key.
+</div>
+
+
+<div id="example_11_input_notes"><h3>Example 11 for named graphs and quads</h3>
+JSON-LD uses the <code>"@graph"</code> key for two objectives:
+<p>
+<ul>
+<li> If an object does not contain an <code>"@id"</code> key but contains <code>"@graph"</code>,
+    the value of the latter is 
+  simply a list of objects in the scope of the <code>"@context"</code> of the object.
+  JSON-LD-LOGIC converts such lists to conjunctions, each element using
+  the same expansion rules.
+<li> If an object does contain an <code>"@id"</code> key,
+   the conjunction elements are not interpreted as RDF triplets, 
+  but <i>quads</i> with the <code>"@id"</code> key value as a fourth element: 
+    the <code>"@id"</code> value indicates which graph the
+  arc belongs to. JSON-LD-LOGIC converts such lists using the four-argument 
+  <code>"$narc"</code>
+  predicate (named arc) with the graph <code>"@id"</code> value as the last argument.
+</ul>  
+<p>    
+The current example represents data necessary for detecting a grandfather
+relation in two trivial named graphs and uses a rule merging the named graphs into one
+unnamed graph.
+</div>
+<pre>
+<code id="example_11_input_code">[
+{ 
+  "@id":"bobknows",
+  "@graph": [  
+    {"@id":"pete", "father":"john"}
+  ]
+},    
+{ 
+  "@id":"eveknows",
+  "@graph": [  
+    {"@id":"mark", "father":"pete"}
+  ]
+}, 
+{
+  "@name":"mergegraphs",
+  "@logic": [["$narc","?:X","?:Y","?:Z","?:U"],"=>",["$arc","?:X","?:Y","?:Z"]]
+},  
+{
+  "@name":"gfrule",
+  "@logic": ["if", {"@id":"?:X","father":"?:Y"}, {"@id":"?:Y","father":"?:Z"}, "then", {"@id":"?:X","grandfather":"?:Z"}]
+},      
+{"@question": {"@id":"?:X","grandfather":"john"}}
+]  
+</code>
+</pre>
+<div id="example_11_proof_notes">
+</div>
+
+<div id="example_12_input_notes"><h3>Example 12 for the list datatype</h3>
+<p>
+The RDF semantics of the JSON-LD list value construction using the <code>"@list"</code>key 
+like in <code>"clients": {"@list":["a","b","c"]}</code> requires the construction of a number of
+triplets with <code>rdf:first, rdf:rest and rdf:nil</code> properties.
+</p>
+<p>
+JSON-LD-LOGIC deviates from this semantics since it can use function terms instead of
+triplets.
+A list is converted using the special <code>"$list"</code> function appending a first argument to
+the second argument and the <code>"$nil"</code> constant for an empty list. JSON-LD-LOGIC
+defines a predicate and two functions on lists: <code>"$is_list", "$first", "$rest"</code>
+<p>
+The current example defines functions for counting the length of the list and summing
+the numeric elements. Then it uses these functions in a rule for deriving a <code>"goodcompany"</code> type
+as an object with at least three customers and revenues over 100. Finally we ask to find an
+object with the <code>"goodcompany"</code> type.
+
+</div>
+<pre>
+<code id="example_12_input_code">[
+{
+  "@id":"company1",
+  "clients": {"@list":["a","b","c"]},
+  "revenues": {"@list":[10,20,50,60]}
+},
+
+[["listcount","$nil"],"=",0],
+[["listcount",["$list","?:X","?:Y"]],"=",["+",1,["listcount","?:Y"]]],
+
+[["listsum","$nil"],"=",0],
+[["listsum",["$list","?:X","?:Y"]],"=",["+","?:X",["listsum","?:Y"]]],
+
+["if",
+  {"@id":"?:X","clients":"?:C","revenues":"?:R"},
+  ["$greater",["listcount","?:C"],2], 
+  ["$greater",["listsum","?:R"],100],
+  "then", 
+  {"@id":"?:X","@type":"goodcompany"} 
+],
+
+{"@question": {"@id":"?:X","@type":"goodcompany"}}
+  
+]
+</code>
+</pre>
+<div id="example_12_proof_notes">
+</div>
+
+<div id="example_13_input_notes"><h3>Example 13 for distinct symbols</h3>
+<p>
+JSON-LD-LOGIC uses a special prefix <code>#:</code>" to indicate that a symbol
+is not equal to any other syntactically different symbol with the <code>#:</code>
+prefix and not equal to any numbers or lists.
+</p>
+<p>
+For example, both <code>["#:pete","=","#:john"]</code> and <code>"["#:pete","=",2]</code>
+must be evaluated to <i>false</i>, while <code>["pete","=","#:john"]</code> and 
+<code>["pete","=",2]</code>
+are not evaluated to <i>false</i>.
+<p>
+The <i>distinct symbols</i> can be seen as an extension of the <i>string</i> type:
+a string function <code>"$strlen"</code> and predicates <code>"$substr", "$substrat"</code>
+are defined in JSON-LD-LOGIC for the distinct symbols.
+<p>
+The distinct symbols of JSON-LD-LOGIC are translated to the distinct symbols of the
+TPTP language with the same semantics as described above. In the TPTP language the distinct
+symbols are surrounded by double quotes.
+</div>
+<pre>
+<code id="example_13_input_code">[
+{
+  "@id":"smith1",
+  "@type":["#:person","baby"],
+  "name":"John Smith"  
+},
+{
+  "@id":"smith2",
+  "@type":["#:dog","newborn"],  
+  "name":"John Smith"  
+},
+["if", 
+  {"@id":"?:X","@type":"?:T1"},
+  {"@id":"?:Y","@type":"?:T2"},
+  ["?:T1","!=","?:T2"],
+  "then", 
+  ["?:X","!=","?:Y"]
+],
+{"@question": ["smith1","!=","smith2"]}
+]
+</code>
+</pre>
+<div id="example_13_proof_notes">
+</div>
+
+<!--
+<div id="example_14_input_notes"><h3>Example 14 for</h3>
+intro 14 
+</div>
+<pre>
+<code id="example_14_input_code">code 14
+</code>
+</pre>
+<div id="example_14_proof_notes">
+note 14
+</div>
+-->
+
+</div>
+
+<!-- at-end-scripts -->
+
+<script>
+// instead of jquery
+function gid(x) { return document.getElementById(x); }
+// reading a file
+function handleFileSelect(evt) {
+  var files = evt.target.files; 
+  for (var i = 0, f; f = files[i]; i++) {
+    var reader = new FileReader();
+    reader.onload = (function(theFile) {
+      return function(e) { gid('gkc_1_input').value=e.target.result; };
+    })(f);
+    reader.readAsText(f);
+  }
+}
+// do this to initialize file reading:
+gid('files').addEventListener('change', handleFileSelect, false);
+
+</script>
+<!-- ui with bootstrap -->
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+<script src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/js/bootstrap.min.js"></script>
+<!-- Solver code -->
+<script async src="gkcjs.js"></script>
+<!--
+<script>
+// google analytics
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-61132529-1', 'auto');
+  ga('send', 'pageview');
+</script> 
+-->
+</body>
+</html>

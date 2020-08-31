@@ -5,13 +5,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<meta name="description" content="Simple propositional logic solvers: easy to hack and experiment with.">
+<meta name="description" content="Online logic solvers.">
 <meta name="author" content="Tanel Tammet">
-<meta name="keywords" content="logic, solvers, propositions, dpll, resolution, truth table"> 
+<meta name="keywords" content="logic, solvers, reasoning, propositions, dpll, resolution, truth table"> 
 
 <meta itemprop="itemtype" content="http://schema.org/SoftwareApplication">
 <meta itemprop="name" content="Logictools">
-<meta itemprop="description" content="Simple propositional logic solvers: easy to hack and experiment with.">
+<meta itemprop="description" content="Logic solvers and conversion tools.">
 <meta itemprop="url" content="http://logictools.org">
 <meta itemprop="operatingSystems" content="Linux, Windows">
 <meta itemprop="softwareApplicationCategory" content="WebApplication">
@@ -20,7 +20,7 @@
 <meta property="og:url" content="http://logictools.org"> 
 <meta property="og:site_name" content="Logictools"> 
 <meta property="og:type" content="website">
-<meta property="og:description" content="Simple propositional logic solvers: easy to hack and experiment with.">
+<meta property="og:description" content="Logic solvers and conversion tools.">
 <meta property="fb:admins" content="tanel.tammet">
 
 <link rel="shortcut icon" href="logo.png">
@@ -29,16 +29,371 @@
 <!-- Bootstrap core CSS -->
 <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/css/bootstrap.min.css">
 <!-- Custom styles for this template -->
-<link href="wdb.css" rel="stylesheet">
-<script>
-// google analytics
-  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
-  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
-  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
-  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono&family=Inconsolata&family=Roboto:wght@300&display=swap">
+<link rel="stylesheet" href="wdb.css">
+<style>
+html.wf-loading * {
+     opacity: 0;
+ }  
+.result {
+  padding: 15px; 
+  white-space: pre-wrap;
+}
+.result_wiblock {
+  padding: 0px; 
+  color: black;
+  font-family: 'Inconsolata','Roboto Mono','Courier New', Courier, monospace; 
+  border-width: 1px, 1px, 1px, 1px;
+  border-radius: 5px;
+} 
 
-  ga('create', 'UA-61132529-1', 'auto');
-  ga('send', 'pageview'); 
+.syntax {  
+  width: 70px; height: 30px; text-align: center; 
+  padding: 0px 0px 1px 0px;  font-size: 12px;
+  line-height: 1.42; border-radius: 15px; 
+  background-color: #cccccc; color: #337ab7; margin-left: 15px;
+}         
+
+.btn-prove {
+  font-family: Arial, Helvetica, sans-serif;
+}
+/*
+.btn-convert {
+  background-color: #337ab7;
+}
+*/
+.btn-file {
+  position: relative;
+  overflow: hidden;
+}
+.btn-file input[type=file] {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 100px;
+  min-height: 100px;
+  font-size: 100%;
+  text-align: right;
+  filter: alpha(opacity=0);
+  opacity: 0;
+  outline: none;
+  background: white;
+  cursor: inherit;
+  display: block;
+}
+
+code {
+    padding: .1em .4em;
+    margin: 2px 5px 2px 5px;   
+    font-size: 100%;
+    color:black !important;
+    background-color: #f4f4f4 !important;
+    border-radius: 4px;
+    font-family: 'Inconsolata','Roboto Mono','Courier New', Courier, monospace;
+}
+
+pre {    
+    background-color: white !important;   
+}
+
+pre code {
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: 100% !important;
+    color: #222 !important;
+    background-color: white !important;
+    border-radius: 0 !important;
+}
+
+</style>
+<script src="https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js"></script>
+<script>
+  WebFont.load({
+    google: {
+      families: ['Roboto', 'Inconsolata']
+    }
+  });
+</script>
+<script>
+'use strict';
+
+var gkcoutput="";
+
+function useGkc(el) {
+  var placeid;
+  var input, output, textflag;
+  var inputarea, outputplace;
+  var arglist;
+  var sel, conversion, print_level, print_derived, strategy, seconds;
+ 
+  var placeid=el.parentNode.id;
+  var div = document.getElementById(placeid+"_output"); 
+  //clearOutputByPlace(placeid); 
+  inputarea=document.getElementById("gkc_1_input");
+  outputplace=document.getElementById("result");  
+  input=inputarea.value;  
+  if (seemsJson(input)) textflag="-jstext";
+  else textflag="-text"   
+  
+  sel=document.getElementById("format_select");
+  conversion=sel.options[sel.selectedIndex].value;
+  if (conversion=="json" || conversion=="tptp") {
+    arglist=[textflag,input,"-"+conversion];
+  } else if (conversion=="simple" || conversion=="clauses") {
+    arglist=[textflag,input];  
+  } else {
+    conversion=conversion.substring(8);        
+    arglist=[textflag,input,"-"+conversion];
+  }
+
+  sel=document.getElementById("print_level");
+  print_level=sel.options[sel.selectedIndex].value;
+  arglist=arglist.concat(['-print',print_level]);
+
+  sel=document.getElementById("print_derived");
+  print_derived=sel.options[sel.selectedIndex].value;
+  if (print_derived=="on") {
+    arglist=arglist.concat(['-derived']);
+  }
+
+  sel=document.getElementById("strategy");
+  strategy=sel.value;
+  if (strategy) {
+    arglist=arglist.concat(['-strategytext',strategy]);
+  }
+
+  sel=document.getElementById("seconds");
+  seconds=sel.value;
+  if (seconds) {
+    seconds=parseInt(seconds);
+    if (isNaN(seconds)) seconds=5;
+    arglist=arglist.concat(['-seconds',""+seconds]);
+  } else {
+    arglist=arglist.concat(['-seconds',"5"]);
+  }
+
+  arglist=arglist.concat(['-parallel',"0"]);
+
+  //console.log(arglist);
+  gkcoutput="";
+  gkc(arglist);
+  //console.log("gkcoutput",gkcoutput);
+  document.getElementById("result").innerHTML=gkcoutput.trim();
+}  
+
+function seemsJson(str) {
+  var c, len;
+  var i,lpar=0,rpar=0,lbrack=0,lcurl=0,rcurl=0,rbrack=0,quotes=0,periods=0,perc=0;
+  var tptpsymbs=0, jssymbs=0;
+  
+  if (!str) return 0;
+  len=str.length;
+  for(i=0; i<len; i++) {
+    c=str[i];
+    if (c=='[') lbrack++;
+    else if (c==']') rbrack++;
+    else if (c=='{') lcurl++;
+    else if (c=='}') rcurl++;
+    else if (c=='(') lpar++;
+    else if (c==')') rpar++;
+    else if (c=='"') quotes++;
+    else if (c=='.') periods++;
+    else if (c=='%') perc++;
+  }
+  //console.log(lbrack,lcurl,rbrack,rcurl,quotes,periods);
+  if (!lbrack && !lcurl) return 0;
+  if (!rbrack && !rcurl) return 0;
+  if (!quotes) return 0;
+  if (!periods && quotes) return 1;
+  tptpsymbs=2*lpar+2*rpar+periods+perc;
+  jssymbs=lbrack+rbrack+2*lcurl+2*rcurl+2*quotes;
+  //console.log(jssymbs,tptpsymbs);
+  if (jssymbs>tptpsymbs) return 1;
+  else return 0;
+}
+
+function gkc(arglist) {
+  Module.callMain(arglist);
+}  
+
+function convert(el) {
+  var placeid;
+  var input, output, textflag;
+  var inputarea, outputplace;
+  var arglist;
+  var conversion;
+  var sel;
+
+  var placeid=el.parentNode.id;
+  var div = document.getElementById(placeid+"_output"); 
+  //clearOutputByPlace(placeid); 
+  inputarea=document.getElementById("gkc_1_input");
+  outputplace=document.getElementById("result");  
+  input=inputarea.value; 
+  if (seemsJson(input)) textflag="-jstext";
+  else textflag="-text"   
+
+  sel=document.getElementById("conversion_select");
+  conversion=sel.options[sel.selectedIndex].value;
+  if (conversion=="json" || conversion=="tptp") {
+    arglist=[textflag,input,"-convert","-"+conversion];
+  } else if (conversion=="simple" || conversion=="clauses") {
+    arglist=[textflag,input,"-clausify"];  
+  } else {
+    conversion=conversion.substring(8);        
+    arglist=[textflag,input,"-clausify","-"+conversion];
+  }  
+  gkcoutput="";
+  //console.log(arglist);
+  gkc(arglist);
+  //console.log("gkcoutput",gkcoutput);
+  document.getElementById("result").innerHTML=gkcoutput;
+}
+
+function clearOutputByPlace(placeid) { 
+  var div = document.getElementById(placeid+"_output");
+  while(div.firstChild){
+    div.removeChild(div.firstChild);
+  }
+}
+
+function clearOutput(el) { 
+  document.getElementById("result").innerHTML="";
+  document.getElementById("proof_notes").innerHTML="";    
+}
+/*
+function clearInputByPlace(placeid) { 
+  var sel;
+
+  sel=document.getElementById("select_example");
+  if (sel) sel.options.selectedIndex=0; 
+  document.getElementById(placeid+"_input").value="";  
+}
+*/
+function clearInput(el) { 
+  var sel;
+
+  sel=document.getElementById("select_example");
+  if (sel) sel.options.selectedIndex=0;
+  sel=document.getElementById("select_advanced_example");
+  if (sel) sel.options.selectedIndex=0;
+  document.getElementById("gkc_1_input").value=""; 
+  document.getElementById("input_notes").innerHTML="";  
+}
+
+function fillOutput(placeid,text) { 
+  document.getElementById(placeid+"_output").innerHTML=text;  
+}
+
+// example selection
+
+function selectExample(level) {
+  var sel;
+  var value;
+  var data;
+  var notes;
+  var placeid,html,el;
+
+  if (level=='simple') sel=document.getElementById("select_example");
+  else sel=document.getElementById("select_advanced_example");
+  value=sel.options[sel.selectedIndex].value;
+  if (!value) return;
+
+  if (value=="examples") {
+    document.getElementById("input_notes").innerHTML="";
+    document.getElementById("proof_notes").innerHTML="";
+    document.getElementById("result").innerHTML="";
+    return;
+  }
+ 
+  placeid="example_"+value+"_";
+
+  el=document.getElementById(placeid+"input_code");
+  if (el) {
+    html=el.innerHTML; 
+    if (html) {
+      html=html.replace(new RegExp("&amp;","g"),"&");
+      html=html.replace(new RegExp("&gt;","g"),">");
+      html=html.replace(new RegExp("&lt;","g"),"<");
+      document.getElementById("gkc_1_input").value=html;
+    }
+  }
+  if (!el || !html) document.getElementById("gkc_1_input").value="";
+
+  el=document.getElementById(placeid+"input_notes");
+  if (el) {
+    html=el.innerHTML;
+    if (html) {      
+      document.getElementById("input_notes").innerHTML=html;
+    }
+  } 
+  if (!el || !html) document.getElementById("input_notes").innerHTML=""; 
+
+  el=document.getElementById(placeid+"proof_notes");
+  if (el) {
+    html=el.innerHTML;
+    if (html) {
+      document.getElementById("proof_notes").innerHTML=html;
+    }
+  }
+  if (!el || !html) document.getElementById("proof_notes").innerHTML="";  
+
+  html="<div class='click_prove'>Click the Prove button!</div>";
+  html="<button onclick='useGkc(this); return false;' ";
+  html+="class='btn btn-small btn-primary btn-prove'style='width: 70px;''>Prove</button>";
+  document.getElementById("result").innerHTML=html;
+}
+
+function switchAdvanced() {
+  if ($('#advanced_buttons').is(":hidden")) {
+    //$('#ctf_show_configuremenu').val('1');
+    //$('#configure_btn').attr('value',clstr[2]);
+  } else {
+    //$('#ctf_show_configuremenu').val('0');
+    //$('#configure_btn').attr('value',clstr[1]);
+  }  
+  $('#advanced_buttons').slideToggle('slow');
+};
+
+// simplified Module glue code originally produced by emscripten
+
+var Module={  
+  noInitialRun: true,
+  preRun:[],
+  postRun:[],
+  print: function(s) {
+    gkcoutput+=s+"\n";    
+  },
+  printErr:function(e){
+    arguments.length>1 && (e=Array.prototype.slice.call(arguments).join(" "));
+    if ((JSON.stringify(e)).includes("abort(OOM)")) {
+      location.reload();
+    } else if ((JSON.stringify(e)).includes("index out of bounds")) {
+      location.reload();
+    } else if ((JSON.stringify(e)).includes("timeout")) {
+      location.reload();
+    }
+    console.error(e);    
+  },
+  setStatus:function(e){ return 1 },
+  totalDependencies:0,
+  monitorRunDependencies:function(e){
+    this.totalDependencies=0; 
+    Module.setStatus(e ? "Preparing... ("+(this.totalDependencies-e)+"/"+this.totalDependencies+")"
+       : "All downloads complete.")
+  }
+};
+/*
+window.onerror=function(e){
+  console.error(e);
+  
+  // Module.setStatus("Exception thrown, see JavaScript console"),
+  // Module.setStatus=function(e){
+  //   e && Module.printErr("[post-exception status] "+e)
+  // }
+  
+}
+*/
 </script>
 </head>
 
@@ -58,9 +413,10 @@
     </div>
     <div class="navbar-collapse collapse">
       <ul class="nav navbar-nav">
-        <li class="active"><a href="index.html">Solve</a></li>        
-        <li class="dummy"><a href="propositional.html">Propositional logic</a></li>
-        <li class="dummy"><a href="predicate.html">Predicate logic</a></li>
+        <li class="active"><a href="index.html">Predicate logic</a></li>        
+        <li class="dummy"><a href="prop.html">Propositional logic</a></li>
+        <li class="dummy"><a href="json.html">Json</a></li>
+        <!-- <li class="dummy"><a href="predicate.html">Predicate logic</a></li> -->
         <li class="dummy"><a href="download.html">Download</a></li>        
         <li class="dummy"><a href="about.html">About</a></li> 
       </ul>
@@ -76,207 +432,681 @@
     <div class="col-md-12 wblock wblock1">
     
     <!--------------------------- --->
-        
-<h2>Solve a propositional formula:  
- <button type="button" class="btn btn-default" 
+
+<h2 style="font-family: 'Roboto',Arial,Helvetica,sans-serif; font-weight: 300; line-height: 1.1;">Solve a predicate logic reasoning task: 
+  <button type="button" class="btn btn-default" 
          onclick="gid('syntax').style.display='block'; document.location='#syntax'; "
-         style=" 
-         width: 70px; height: 30px; text-align: center; padding: 0px 0px 1px 0px;  font-size: 12px;
-         line-height: 1.42; border-radius: 15px; 
-         background-color: #cccccc; color: #337ab7; margin-left: 15px;">syntax</button>
-</h2>
-  <form class="form-inline">
-    <div class="wblock">
-    <textarea class="form-control" id="propinput" 
-      style="height: 200px; width:100%; margin-bottom: 20px;">
-(a -&gt; b) &amp; a &amp; -b
-     </textarea>
+         style="
+          width: 70px; height: 30px; text-align: center; 
+          padding: 0px 0px 1px 0px;  font-size: 12px;
+          line-height: 1.42; border-radius: 15px; 
+          background-color: #cccccc; color: #337ab7; margin-left: 15px;"
+         >help</button>
+</h2>                
+
+  <div class="form-inline" method="post" osnubmit="return false;">
+    <div class="wblock">      
+      <div id="gkc_1">     
+        <textarea class="form-control" id="gkc_1_input" spellcheck="false"
+        style="height: 200px; width:100%; margin-bottom: 20px; color: black;
+        font-family: 'Inconsolata','Roboto Mono','Courier New', Courier, monospace; ">% a simple example: using two facts and two rules, find a grandson of john
+
+father(john,pete).
+father(pete,mark).
+(father(X,Y)  & father(Y,Z)) => grandfather(X,Z).
+grandfather(X,Y) => grandson(Y,X).
+
+grandson(X,john) => $ans(X).</textarea>
+        <button onclick="useGkc(this); return false;" class="btn btn-small btn-primary btn-prove"
+        style="width: 70px;">Prove</button>
+        <div style="display: inline-block; width: 50px; text-align: center;">simple</div>
+        <select class="form-control" style="width: 110px;" id="select_example"
+          onchange="selectExample('simple')">
+          <option value="examples">examples</option>
+          <option value="1">basics</option>
+          <option value="2">answers</option>
+          <option value="3">rules</option>
+          <option value="4">or-answers</option>
+          <option value="5">more rules</option>
+          <option value="6">functions</option>
+          <option value="7">equality</option>
+          <option value="8">multiple answers</option>
+          <option value="9">algebra</option>
+          <option value="10">unprovable</option>
+          <option value="11">hard</option>
+          <option value="12">blocks world</option>      
+        </select>
+        <div style="display: inline-block; width: 62px; text-align: center;">complex</div>
+        <select class="form-control" style="width: 110px;" id="select_advanced_example"
+        onchange="selectExample('advanced')">
+          <option value="examples">examples</option>
+          <option value="13">characters</option>
+          <option value="14">TPTP FOF language</option>
+          <option value="15">simple FOF language</option>
+          <option value="16">strategy</option>
+          <option value="17">arithmetic</option>
+          <option value="18">lists</option>
+          <option value="19">distinct symbols</option>                                
+          <option value="">-- from TPTP --</option>
+          <option value="20">natural language</option>
+          <option value="21">organization theory</option>
+          <option value="22">boolean algebra</option>
+          <option value="23">medicine</option>
+          <option value="24">Dreadbury Mansion</option>            
+          <option value="25">group theory</option>
+          <option value="26">set theory</option>
+        </select>  
+        <div style="display: inline-block; width: 28px; text-align: center;">or</div>
+        <span class="btn btn-default btn-file">
+        Browse<input type="file" id="files" name="files"  
+         value="">
+        </span>           
+        <div style="display: inline-block; width: 60px;  margin-left: 10px;"></div>
+        <button onclick="clearOutput(this); switchAdvanced(); return false;" 
+          class="btn btn-small btn-default"
+        >Advanced</button>                          
+        <button onclick="clearOutput(this); return false;" class="btn btn-small btn-default"
+        >Clear result</button>
+        <button onclick="clearInput(this); return false;" class="btn btn-small btn-default"
+        >Clear input</button>
+        <a href="#solveModal" data-toggle="modal" class="qlink">
+          <button type="button" class="btn btn-default" style=" 
+           width: 30px; height: 30px; text-align: center; padding: 6px 0;  font-size: 12px;
+           line-height: 1.42; border-radius: 15px; 
+           background-color: #cccccc; color: #337ab7; margin-left: 15px;">?</button>
+        </a>         
+        <div id="advanced_buttons" style="padding-top: 15px; display: none;">                    
+          <div style="display: inline-block; width: 62px; text-align: center;">Seconds</div>
+          <input type="text" class="form-control" id="seconds" value="5" style="width: 50px"></input>
+          <div style="display: inline-block; width: 65px; text-align: center;">print level</div>
+          <select class="form-control" style="width: 125px;" id="print_level">
+            <option value="10">minimal</option>
+            <option value="11">+ strategy</option>
+            <option value="12">+ runs</option>
+            <option value="15">+ statistics</option>
+            <option value="20">+ given</option>
+            <option value="40">+ derived</option>
+            <option value="50">+ details</option>                       
+            <option value="60">+ datastructures</option> 
+          </select>
+          <div style="display: inline-block; width: 50px; text-align: center;">format</div>
+          <select class="form-control" style="width: 90px;" id="format_select">
+            <option value="simple">simple</option>
+            <option value="json">json</option>
+            <option value="tptp">tptp</option>                  
+          </select> 
+          <div style="display: inline-block; width: 85px; text-align: center;">show&nbsp;derived</div>
+          <select class="form-control" style="width: 65px;" id="print_derived">
+            <option value="off">off</option>
+            <option value="on">on</option>                                  
+          </select>
+          <div style="display: inline-block; width: 68px; text-align: center;"></div>  
+          <button onclick="convert(this); return false;" class="btn btn-small btn-default btn-convert"
+          >Convert to</button>
+          <select class="form-control" style="width: 103px;" id="conversion_select">
+            <option value="json">json</option>
+            <option value="tptp">tptp</option>
+            <option value="simple">simple</option>
+            <option value="clauses">clauses</option>
+            <option value="clauses_json">json clauses</option>
+            <option value="clauses_tptp">tptp clauses</option>          
+          </select>
+          <a href="#advancedModal" data-toggle="modal" class="qlink">
+            <button type="button" class="btn btn-default" style=" 
+             width: 30px; height: 30px; text-align: center; padding: 6px 0;  font-size: 12px;
+             line-height: 1.42; border-radius: 15px; 
+             background-color: #cccccc; color: #337ab7; margin-left: 12px;">?</button></a>
+          <p>              
+          <textarea class="form-control" id="strategy" spellcheck="false"
+           style="height: 100px; width:100%; margin-bottom: 20px; margin-top: 15px;"
+           placeholder="Strategy as json text"></textarea>
+        </div>
+      </div>      
     </div>
-    <p>
-    <div style="display: inline-block;">
-        
-    <!-------- solve the formula ----------- -->
-    <div>
-      <button class="btn btn-small btn-primary"
-      style="width: 70px;"    
-      onclick="proplog_ui.solve(gid('propinput').value,gid('algorithm_select').value,gid('trace_method').value); 
-         return false;">Solve</button>
-      &nbsp; using &nbsp;
-      <select class="form-control" style="width: 180px;" id="algorithm_select">
-        <option value="dpll_better">dpll: better</option>
-        <option value="dpll_old">dpll: old</option>
-        <option value="dpll_naive">dpll: naive</option>
-        <option value="truth_table_better">truth table: better</option>
-        <option value="truth_table_naive">truth table: naive</option>
-        <option value="resolution_better">resolution: better</option>
-        <option value="resolution_naive">resolution: naive</option>
-      </select>
-      &nbsp; showing &nbsp;
-      <select class="form-control" style="width: 150px;" id="trace_method">
-        <option value="none">no trace</option>
-        <option value="html">html trace</option>
-        <option value="console">console trace</option>      
-      </select>        
-      <a href="#solveModal" data-toggle="modal" class="qlink">
-        <button type="button" class="btn btn-default" style=" 
-         width: 30px; height: 30px; text-align: center; padding: 6px 0;  font-size: 12px;
-         line-height: 1.42; border-radius: 15px; 
-         background-color: #cccccc; color: #337ab7; margin-left: 15px;">?</button>
-      </a>
-    </div>  
-    <p>
-    
-    <!-------- build a table or form ----------- -->
-    <div>
-      <button class="btn btn-small btn-primary" 
-       style="width: 70px;" 
-      onclick="proplog_ui.build(gid('propinput').value,gid('build_select').value); 
-        return false;">Build</button> &nbsp; a &nbsp;
-      <select class="form-control" style="width: 180px;" id="build_select">      
-        <option value="truth_table">truth table</option>
-        <option value="cnf">clause normal form</option>      
-        <option value="parse_tree">parse tree</option>
-      </select>      
-      <a href="#buildModal" data-toggle="modal" class="qlink">
-        <button type="button" class="btn btn-default" style=" 
-         width: 30px; height: 30px; text-align: center; padding: 6px 0;  font-size: 12px;
-         line-height: 1.42; border-radius: 15px; 
-         background-color: #cccccc; color: #337ab7; margin-left: 15px;">?</button>
-      </a>      
-    </div>  
-    <p>
-           
-    
-    <!-------- generate or select a problem ----------- -->
-    
-    <div>
-      <button class="btn btn-small btn-default" 
-         
-         onclick="gid('propinput').value=proplog_generate.generate_problem(gid('n_value').value,
-           gid('problem_select').value); 
-           return false;">Generate a problem</button> 
-      &nbsp; of type &nbsp;
-      <select class="form-control" style="width: 160px;" id="problem_select">
-        <option value="random_3-sat">random 3-sat</option>
-        <option value="all_combinations">all combinations</option>
-        <option value="small_unsat">small unsat</option>     
-      </select>     
-      for
-      <input class="form-control" type="text" id="n_value" style="width: 60px;" value="10"></input>
-      variables.        
-      <button class="btn btn-small btn-default" 
-         style="margin-left: 5px; margin-right: 5px;"
-         onclick="gid('propinput').value=''; proplog_ui.clear_output(); return false;">Clear</button>          
-      <input type="file" id="files" name="files" class='btn btn-default btn-small' 
-         style="display: inline-block;" value="">
-      <a href="#generateModal" data-toggle="modal" class="qlink">
-        <button type="button" class="btn btn-default" style=" 
-         width: 30px; height: 30px; text-align: center; padding: 6px 0;  font-size: 12px;
-         line-height: 1.42; border-radius: 15px; 
-         background-color: #cccccc; color: #337ab7; margin-left: 10px;">?</button>
-      </a>
-    </div>     
-    <p>    
-      
-    <span style="margin-left: 0px">More problems: 
-      <a href="http://www.cs.ubc.ca/~hoos/SATLIB/benchm.html">satlib</a>,
-      <a href="http://www.satcompetition.org/">competitions</a>
-    </span>
+    <p>                  
     </div>
 
-  </form>
-
-    
-<h2>Result</h2>
+<p>
+<div id="input_notes"></div>
+<p>
+<h2>Result:</h2>
 
 <div class="container">
   <div class="row">
     <div class="col-md-12 wblock wblock1">
-        <div class="wiblock">  
-          <div id="result" style="padding: 20px;"></div>
+        <div class="wiblock result_wiblock">  
+          <div id="result" class="result"></div>
         </div>
     </div>
   </div>
 </div>
-
-<h2>Process in milliseconds</h2>   
-
-<div class="container">
-  <div class="row">
-    <div class="col-md-12 wblock wblock1">
-      <div class="wiblock wiblock_full">  
-        <div id="process" style="padding: 20px;"></div>
-      </div>
-    </div>
-  </div>
-</div>
+<p>
+  <div id="proof_notes"></div>
+<p>
 
 <!-- syntax description is initially hidden -->
 
 <div id="syntax" style="display: none">
-<h2>Syntax</h2> 
-
-Use either a conventional formula syntax like
-<pre>
-(a -&gt; b) &amp; a &amp; -b
-</pre>
-or a <a href="http://www.domagoj-babic.com/uploads/ResearchProjects/Spear/dimacs-cnf.pdf">dimacs</a> 
-version of the clause normal form syntax like
-<pre>
--1 2
-1
--2
-</pre>
-which is a conjunction of disjunction lines with numbers standing for variables:
-the last example means simply <tt>(-x1 v x2) &amp; x1 &amp; -x2</tt>
-<p><p>
-For conventional formula syntax:
-<ul>
-<li>negation symbols are <b>-, ~</b></li>
-<li>conjunction symbols are <b>&amp;, and</b></li>
-<li>disjunction symbols are <b>|, v, V, or</b></li> 
-<li>xor symbols are <b>+, xor </b></li>
-<li>implication symbols are <b>-&gt;, =&gt;</b></li> 
-<li>equivalence symbols are <b>&lt;-&gt;, &lt;=&gt;</b></li> 
-</ul>
-There is no operator precedence; all operators are bound from left:<br>
-<tt>a &amp; b v c &amp; d v e</tt>  is read as <tt>((((a &amp; b) v c) &amp; d) v e)</tt>
-<p><p>
-For dimacs you may use or skip the initial comment lines starting with <b>c</b>,
-the special <b>p</b> line and the final <b>0</b> symbols at the end of each disjunct.
-We allow the trailing <b>0</b>-s only at the end of a line.
-<p>
-I.e. you may use the full dimacs version like
-<pre>
-c comment
-p cnf 2 3
--1 2 0
-1 0
--2 0
-</pre>
-or just
-<pre>
--1 2
-1
--2
-</pre>
 
 
-<a href="#" onclick="gid('syntax').style.display='none';">hide syntax</a>
+<button onclick="gid('syntax').style.display='none'; return false;"
+style="margin-top: 20px;margin-bottom: 0px;" 
+class="btn btn-small btn-default">Hide help</button>   
+
+
+<div class="container" style="margin-top: 5px; margin-bottom: 15px; 
+  margin-left:0px; padding-left:5px;">
+<h3>What is this?</h3>
 </div>
-    
+
+
+<div class="container">
+  <!-- Example row of columns -->
+  <div class="row">
+     <div class="col-md-12 wblock wblock1">
+      <div class="wiblock wiblock_full">
+
+<!-- <h2>What is this?</h2> -->
+<p>
+A toolkit for proving 
+<a href="https://en.wikipedia.org/wiki/First-order_logic">first order predicate logic</a>
+ formulas, answering questions
+and converting between different syntaxes for logic. 
+<p>
+Think about logic as a generic way of writing rules:
+proving formulas and answering questions is a way of detecting what follows
+from the rules we wrote. 
+<p>
+The toolkit is built around a high-performance reasoner
+<a href="https://github.com/tammet/gkc">gkc</a> (see
+<a href="https://link.springer.com/chapter/10.1007%2F978-3-030-29436-6_32">the paper</a>)
+and runs in the browser using 
+<a href="https://en.wikipedia.org/wiki/WebAssembly">Wasm</a> without any server
+involvement. For more advanced use you may want to
+download the command-line version.
+<p>
+Use it for learning logic and experimenting with a reasoner.
+<p>
+Contents:
+<ul>
+<li><a href="#basic_syntax">Basic syntax</a>
+<li><a href="#what_does">What does it mean?</a>  
+<li><a href="#special_symbols">Special symbols and additional constructions</a> 
+<ul>   
+<li><a href="#arithmetic">Arithmetic</a> 
+<li><a href="#lists">Lists</a>   
+<li><a href="#distinct_symbols">Distinct symbols as strings</a>    
+</ul>
+<li><a href="#automated_reasoning">Automated reasoning</a>  
+<li><a href="#what_is">What is the practical use?</a>  
+</ul>
+
+
+
+</div></div></div></div>        
+
+<div class="container" style="margin-top: 5px; margin-bottom: 15px; 
+  margin-left:0px; padding-left:5px;">
+<h3 id="basic_syntax">Basic syntax</h3>
+</div>
+
+
+<div class="container">
+  <!-- Example row of columns -->
+  <div class="row">
+     <div class="col-md-12 wblock wblock1">
+      <div class="wiblock wiblock_full">
+<!-- <h3 id="basic_syntax">Basic syntax</h3> -->
+<p>
+A good way to learn syntax and meaning is to go through the explanations in the
+<i>simple examples</i>. Nevertheless, the following presents a compact
+description.
+<p>
+Gkc supports several syntaxes: the <i>simple syntax</i> used in most examples,
+<a href="http://tptp.org/">TPTP</a> syntax and 
+<a href="https://github.com/tammet/json-ld-logic">JSON-LD-LOGIC</a> syntax: see
+the separate <a href="json.html">Json</a> menu for the examples and explanations.
+<p>
+The <i>simple syntax</i> is an extension of the
+TPTP FOF and CNF syntaxes as described in the
+<a href="http://tptp.org/TPTP/TR/TPTPTR.shtml#ProblemPresentation">TPTP technical manual</a>,
+combining them into one and extending with a list
+type and a few convenience predicates and constructions.
+<p>
+The <i>simple syntax</i> input is a list of logical formulas, each terminated with
+a period. The whole list is interpreted as a big conjunction (<i>and</i>) of formulas.
+<p>
+Each <i>formula</i> is either a <i>literal</i> (a positive or a negative <i>atom</i>) or
+is constructed from simpler formulas using logical operators like 
+<ul>
+<li><code>&</code> for conjunction (and), 
+<li><code>|</code> for disjunction (or),
+<li><code>-</code> or <code>~</code> for negation (not),
+<li><code>=></code> for implication (if-then), 
+<li><i>"for all values of variables holds ..."</i> construction
+<code>! [variables] : formula</code> (example <code>! [X,Y] : p(X,Y)</code>) 
+<li><i>"exist values of variables so that ..."</i> construction <code>? [variables] : formula</code>.
+</ul>
+<p>
+Additional logical operators will be described later.  
+<p>
+An <i>atom</i> is a predicate symbol applied to a number of <i>term</i> arguments like
+<code>father(john,pete)</code> and denoting a relation between the arguments.
+A negated atom has a minus sign prepended
+like <code>-father(john,pete)</code>.
+<p>
+<i>Equality</i> is a special predicate written like <code>gender(john)=male</code>
+and meaning, as expected, that the term on the left side is equal to the term on the
+right side. <i>Inequality</i> is another special predicate written like 
+<code>gender(john)!=female</code>
+<p>
+The <i>terms</i> denote objects. A simplest term is just a symbol/constant 
+like <code>john</code>: think of it as a post-it note glued to some real thing or idea: 
+a real object may have many such notes glued to it. A <i>variable</i> like <code>X</code>
+is also a term: think of it as placeholder which can be replaced by any other term.
+<p>
+Variables must start with an upper-case character, other symbols with a lower-case character.
+There are also other options for symbols, more about these below.
+<p>
+A variable which is not in the scope of a <i>for all</i>  <code>!</code> or 
+<i>exists</i> quantifier  <code>?</code> is treated as if it is bound by the 
+<i>for all</i> quantifier. In fact, explicit quantifiers can be skipped
+altogether: they are just a convenience construction.
+<p>
+Numbers like 12 or 3.45 can be also used as constant terms.  
+<p>  
+More complex terms can be constructed from simpler terms using <i>functions</i> like
+<code>age(mother(john))</code> or <code>$sum(X,$multiply(2,X))</code>. A value of
+such a function is not always defined: it can be used just as a constructor for
+complex terms. A function may also be defined on some other terms, like <code>$sum</code>
+is defined on numbers, but not on lists. You may define functions yourself using equality
+like <code>mother(john)=eve</code> or <code>age(mother(john))=age(mother(pete))</code>.
+<p>
+Both line comments <code>%</code> and multi-line comments <code>/* ... */</code>
+are available.
+
+
+</div></div></div></div>        
+
+<div class="container" style="margin-top: 5px; margin-bottom: 15px; 
+  margin-left:0px; padding-left:5px;">
+<h3 id="what_does">What does it mean?</h3>
+</div>
+
+
+<div class="container">
+  <!-- Example row of columns -->
+  <div class="row">
+     <div class="col-md-12 wblock wblock1">
+      <div class="wiblock wiblock_full">
+
+<!-- <h3 id="what_does">What does it mean?</h3> -->
+
+Logic can be seen as a fairly general way of writing down facts and rules,
+while proving the formulas means detecting what follows from the rules.
+<p>
+Think about an atom like <code>father(john,pete)</code> as saying
+that there is a row with two cells <code>john,pete</code> in a two-column 
+table <code>father</code>. In fact, the core ideas of relational database systems
+and SQL stem from this interpretation, although they branch off into specific
+directions. For example, in conventional logic notation all the elements
+in row columns are given positionally, one after another, while in SQL columns have names.
+<p>
+Each predicate like  <code>father</code> should be seen as giving rise
+to two different tables: one for positive facts and another for negative
+facts:  <code>-father(john,mike)</code> means that in the negative <i>-father</i>
+table there is a row <code>john,mike</code>. Importantly, the facts
+we state only say that there are these-and-these rows, but they do not
+say that there cannot be other rows, unknown to us. This inpreretation
+is called <a href="https://en.wikipedia.org/wiki/Open-world_assumption">open world
+assumption</a> contrasting the 
+<a href="https://en.wikipedia.org/wiki/Closed-world_assumption">closed world
+assumption</a> used in database systems and Prolog.
+<p>
+Logical formulas are then understood as rules for deriving new rows in
+the tables. For example. <code>father(X,Y) => child(Y,X)</code> means that
+if there is a row in the <code>father</code> table, the corresponding row with
+arguments exchanged must be put into the <code>child</code> table. 
+<p>
+A rule like <code>-father(X,X)</code> can be seen as saying that the
+negative <code>-father</code> table contains rows like <code>object_n,object_n</code>
+for all objects. Since
+we could potentially have infinitely many objects (think numbers and terms
+constructed from functions) we cannot always physically fill in all the rows.
+<p>
+A <i>contradiction</i> occurs when a row in the positive table also occurs
+in the corresponding negative table. For example, saying <code>father(john,john)</code>   
+would contradict the row <code>john,john</code> in the negative <code>-father</code>
+table, given the rule <code>-father(X,X)</code>.
+<p>
+Finding a contradiction is used as one convenient way of finding whether some
+fact/row follows from our rules. Suppose we say 
+<code>
+father(john,pete) &
+father(X,Y) => child(Y,X)
+</code>
+and we want to prove an obvious fact that <code>child(pete,john)</code> follows
+from this. Let us denote these three statements as <i>a,b,c</i>. Then
+we really want to prove that <code>a &amp; b =&gt; c</code> is true,
+which is equivalent to the question of whether the negated form
+<code>-(a &amp; b =&gt; c)</code> is contradictory, which is equivalent
+to the question of whether the conjunction
+<code>a &amp; b &amp; -c</code> is contradictory. Hence we could add
+the negated form <code>-child(pete,john)</code> to our two initial statements
+and check whether a contradiction can be found.
+<p>
+Finally, an important principle of logic as used here is that no <i>common knowledge</i>
+- or rather, no knowledge at all - is assumed. Everything we want to use
+must be written explicitly as logical facts and rules. The names of the predicates
+mean nothing in itself: a reasoner knows nothing about the <code>father</code>
+predicate except what is explicitly written in the problem statement. You could
+replace all the nice human-understandable names with meaningless names and the
+logical meaning of the problem statement would be exactly the same. 
+<p>
+
+
+</div></div></div></div>        
+
+<div class="container" style="margin-top: 5px; margin-bottom: 15px; 
+  margin-left:0px; padding-left:5px;">
+<h3 id="special_symbols">Special symbols and additional constructions</h3>
+</div>
+
+
+<div class="container">
+  <!-- Example row of columns -->
+  <div class="row">
+     <div class="col-md-12 wblock wblock1">
+      <div class="wiblock wiblock_full">
+
+<!-- <h3 id="special_symbols">Special symbols and additional constructions</h3> -->
+<p>
+Ordinary symbols must start with lower-case character and 
+must not contain any whitespace or non-alphanumeric characters
+like <code>(, -, ~, =, "</code> etc: however, underscore <code>_</code>
+and dollar <code>$</code> are allowed. 
+<p>
+You can put whitespace or any symbol except a single quote
+into symbols by surrounding the symbol with single quote symbols like this:
+<code>'John Smith'</code>. Internal quotes must be prefixed by a backslash
+<code>\</code>.
+<p>
+Additionally you can make a symbol variable by prefixing it with a question
+mark like this:  <code>?smth</code>.
+<p>
+Double quotes surrounding a symbol like <code>"John Smith"</code>
+have a special meaning: the symbol is treated as <i>distinct</i> (essentially,
+a <i>string</i>) meaning that it is known to be unequal to any syntactically 
+different distinct symbols, numbers and lists. This has real effect for 
+equality and string predicates, but not otherwise.
+<p>
+In addition to the typically used constructions <code>&</code>,<code>|</code>,
+<code>-</code>/<code>~</code>, <code>=></code>,
+<code>!</code>, <code>?</code> the syntax provides a number of additional infix logical
+constructions with two arguments. The full list is:
+<ul>
+<li><code>|</code> for disjunction,
+<li><code>&</code> for conjunction, 
+<li><code>&lt;=></code> for equivalence, 
+<li><code>=></code> for implication, 
+<li><code>&lt;=</code> for reverse implication, 
+<li><code><~></code> for non-equivalence (XOR), 
+<li><code>~|</code> for negated disjunction (NOR), 
+<li><code>~&</code> for negated conjunction (NAND), 
+<li><code>@</code> for application, used mainly in the higher-order context in TPTP.
+</ul>
+There are several predicates and function symbols with a pre-defined meaning: all these
+are prefixed with a dollar <code>$</code>.
+<p>
+<code>$ans</code> is used for finding the actual terms we look for as answers: see the
+<i>answers</i> example.
+
+<p>
+<h4 id="arithmetic">Arithmetic</h3>
+<p>  
+
+The numbers and arithmetic functions and predicates are defined following the 
+<a href="http://www.tptp.org/TPTP/TR/TPTPTR.shtml#Arithmetic">TPTP arithmetic system</a>
+plus a few convenience operators for writing infix terms:
+<ul>
+<li>Type detection predicates $is_int, $is_real.
+<li>Comparison predicates $less, $lesseq, $greater, $greatereq.
+<li>Type conversion functions $to_int, $to_real.
+<li>Arithmetic functions on integers and reals:
+$sum, $difference, $product, 
+$quotient, $quotient_e,
+$remainder_e, $remainder_t, $remainder_f, 
+$floor, $ceiling,
+$uminus, $truncate, $round.
+ <p>
+ Note: these comparison predicates and arithmetic functions take exactly two arguments.
+<p>
+ Example: <code>$less($sum(1,$to_int(2.1)),$product(3,3))</code>.
+
+<li>Additional convenience predicate is used: $is_number is true
+if and only if $is_int or $is_real is true.
+
+<li>Additional infix convenience functions +, -, *, / are
+used with the same meaning as $sum, $difference, $product and 
+$quotient, respectively.
+<p>
+Example: <code>$less(1+(1+2),(3*3))</code>
+<p>
+Note: these convenience functions take also exactly two arguments.
+</ul>
+<p><b>NB!</b> Do not use a variable or a non-numeric constant as a first element of the 
+infix arithmetic expression like <code>p(X*2)</code>, otherwise 
+the whole expression will be parsed as a single variable <i>X*2</i>. No such restrictions
+apply for the prefix form.
+
+<p> 
+<h4 id="lists">Lists</h3>
+<p> 
+
+You can use the list syntax like <code>[]</code> for the empty list and <code>[a,b,c]</code>
+for a three-element list. The bracket notation is syntactic sugar for
+the constant <code>$nil</code> and functional list-constructing term 
+<code>$list(a,$list(b,$list(c,$nil)))</code>, respectively.
+<p>
+Observe that <code>$list(X0,X1)</code>  
+constructs a list by prepending <code>X0</code> to the list <code>X1</code>,
+which is generally different from a two-element list <code>[X0,X1]</code>.
+<p>
+Terms constructed using <code>$list</code> or <code>$nil</code> are interpreted as having a 
+<i>list type</i>:
+<ul>
+<li>A <i>list type object</i> is inequal to any number or a distinct symbol.
+<li>Syntactically different <i>list type objects</i> A and B are unequal if at any position the corresponding
+elements of A and B are unequal typed values: numbers, lists or distinct symbols.  
+</ul>
+The following predicate and two functions are defined on lists:
+<ul>
+<li><code>$is_list(L)</code>  evaluates to <i>true</i> if A is a list and <i>false</i> is A 
+  is a number or a distinct symbol.
+<li><code>$first(L)</code>  returns the first element of the list.
+<li><code>$rest(L)</code>  returns the rest of the list, i.e. the result of removing the first element.
+</ul>
+These functions can be applied to non-list arguments, where they are left as is and not 
+evaluated.
+
+<p> 
+<h4 id="distinct_symbols">Distinct symbols as strings</h3>
+<p> 
+
+Symbols in <i>double quotes</i> like in <code>"person"</code> stand for
+for <i>distinct symbols</i>
+which can be viewed as a <i>string type</i>. A distinct symbol is not equal to any 
+other syntactically different symbol and not equal to any numbers or lists.
+</p>
+<p>
+Gkc defines a function and three predicates on distinct symbols:
+<ul>  
+<li><code>$strlen(S)</code> returns the integer length of a distinct symbol S as a string.
+<li><code>$substr(A,B)</code> evaluates to <i>true</i> if a distinct symbol A is a substring of a distinct symbol B, 
+     and <i>false</i> otherwise, provided that A and B are distinct symbols.  
+<li><code>$substrat(A,B,C)</code> evaluates to <i>true</i> if a distinct symbol A is a substring of a 
+     distinct symbol B exactly at the integer position C (starting from 0), and <i>false</i> otherwise,
+     provided that A and B are distinct symbols and C is an integer.  
+<li><code>$is_distinct(A)</code> evaluates to <i>true</i> if A is a distinct symbol and 
+  <i>false</i> if A is a number or a list.  
+</ul>  
+
+
+</div></div></div></div>        
+
+<div class="container" style="margin-top: 5px; margin-bottom: 15px; 
+  margin-left:0px; padding-left:5px;">
+<h3 id="automated_reasoning">Automated reasoning</h3>
+</div>
+
+
+<div class="container">
+  <!-- Example row of columns -->
+  <div class="row">
+     <div class="col-md-12 wblock wblock1">
+      <div class="wiblock wiblock_full">
+
+
+<!-- <h3 id="automated_reasoning">Automated reasoning</h3> -->
+
+<p>
+Automated reasoners prove logical theorems, answer questions and (sometimes)
+can detect unprovability. Basically, they are highly optimized search systems
+often encompassing a large number of different search strategies.
+<p>
+Most of the reasoners are specialized to perform
+well on some specific kinds of problems or are extended with additional
+special capabilities. For example, the 
+<a href="https://github.com/tammet/gkc">gkc</a> prover used in this site
+is specialized for very large problems, although this capability cannot 
+be used well in the confined browser environment. Hint: you may want to
+download the command-line version for more advanced use.
+<p>
+A large special category of provers focuses on propositional logic. 
+See the <a href="prop.html">Propositional logic</a> menu for checking out their
+core ideas. The easiest way to find top level propositional solvers is to check the  
+<a href="http://www.satcompetition.org/">The international SAT Competition</a>: you
+will see the competition results for various problem categories, can download competition
+problems, source code and descriptions of the provers.
+A good alternative choice is to check out <a href="http://minisat.se">minisat</a>: 
+an easily extensible and hackable state of the art solver which is a basis for several
+other state of the art solvers. You can run
+<a href="https://msoos.github.io/cryptominisat_web/">crypto-minisat in your browser</a>,
+compiled from C to javascript using LLVM.
+<p>
+Good reading material for predicate logic provers:
+<ul>
+<li><a href="http://lambda.ee/w/images/0/06/Geoffreasoningnotes.pdf">Automated
+Theorem Proving Course Content</a> by Geoff Sutcliffe is probably the best introductory material</li> 
+<li><a href="https://resources.mpi-inf.mpg.de/departments/rg1/conferences/vtsa09/slides/schulz.pdf">
+Implementation tutorial</a> by Stephan Schulz
+<li><a href="http://resources.mpi-inf.mpg.de/departments/rg1/teaching/autrea-ss12/script/script.pdf">
+A detailed theoretical coursebook</a> by Marek Kosta and Christoph Weidenbach  
+<li><a href="http://www.cl.cam.ac.uk/~jrh13/atp/index.html">
+Handbook of Practical Logic and Automated Reasoning</a> contains code examples in ML in addition
+to an 
+<a href="http://www.cambridge.org/us/academic/subjects/computer-science/programming-languages-and-applied-logic/handbook-practical-logic-and-automated-reasoning?format=HB">
+excellent text</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Handbook_of_Automated_Reasoning">Handbook of Automated_Reasoning</a>
+for in-depth papers
+(<a href="http://www.amazon.com/Handbook-Automated-Reasoning-Volume-Set/dp/0262182238/ref=pd_sim_sbs_b_1?ie=UTF8&refRID=124AQMPSV6ZW9N4J28EG">here on Amazon</a>). </li> 
+</ul>
+
+For experimenting with general-purpose 
+<a href="http://en.wikipedia.org/wiki/Automated_theorem_proving">predicate logic solvers</a> check out:
+<ul style="margin-top: 10px;">
+<li><a href="http://tptp.org/">The TPTP Problem Library</a> for Automated Theorem Proving by 
+Geoff Sutcliffe and Christian Suttner.
+<li><a href="http://tptp.org/cgi-bin/SystemOnTPTP">Online solvers on TPTP</a></li>
+<li><a href="http://tptp.org/CASC/">The CADE ATP System Competition</a></li>
+<li><a href="https://github.com/eprover/PyRes">PyRes</a> A well-documented simple implementation in Python
+ for illustrating the basic machinery.
+</ul>
+
+Several specialized categories of predicate logic solvers exist in addition to the  
+<a href="http://en.wikipedia.org/wiki/Automated_theorem_proving">general-purpose solvers</a>
+mentioned above. Some of the categories are:
+<ul>
+<li><a href="https://en.wikipedia.org/wiki/Proof_assistant">Interactive theorem provers</a>
+like <a href="http://leanprover.github.io/">Lean</a>, <a href="https://hol-theorem-prover.org/">HOL</a>,  
+<a href="http://mizar.org/">Mizar</a>, <a href="https://github.com/coq/coq">coq</a>.  
+<li><a href="https://en.wikipedia.org/wiki/Satisfiability_modulo_theories">SMT</a> 
+(satisfiability modulo theories) solvers used for
+<a href="https://en.wikipedia.org/wiki/Formal_verification">formal verification</a> like
+<a href="https://github.com/Z3Prover/z3">Z3</a>
+and 
+<a href="http://pvs.csl.sri.com/">PVS</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Answer_set_programming">Answer set</a> based solvers
+like <a href="http://www.dlvsystem.com/">DLV</a> and
+<a href="http://www.tcs.hut.fi/Software/smodels/">Smodels</a>, see
+<a href="https://www.mat.unical.it/aspcomp2013">the competition</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Description_logic">Description logic</a> 
+solvers, see <a href="http://www.cs.man.ac.uk/~sattler/reasoners.html">the list of implementations</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Web_Ontology_Language">OWL</a> 
+(web ontology language) solvers used in the context of 
+<a href="https://en.wikipedia.org/wiki/Semantic_Web">semantic web</a>, see 
+<a href="http://www.w3.org/2001/sw/wiki/OWL/Implementations">the list of implementations</a></li>  
+</ul>
+
+
+</div></div></div></div>        
+
+<div class="container" style="margin-top: 5px; margin-bottom: 15px; 
+  margin-left:0px; padding-left:5px;">
+<h3 id="what_is"">What is the practical use?</h3>
+</div>
+
+
+<div class="container">
+  <!-- Example row of columns -->
+  <div class="row">
+     <div class="col-md-12 wblock wblock1">
+      <div class="wiblock wiblock_full">
+
+<!-- <h3 id="what_is">What is the practical use?</h3> -->
+<p>
+For the generic reasoners, mostly niche applications so far. 
+The eighties-hype of expert systems and
+symbolic A.I. with little practical value lead to the famous
+<a href="https://en.wikipedia.org/wiki/AI_winter">A.I. winter</a>. This said,
+the propositional and SMT provers are seriously used for verification,
+test generation and configuration management.
+<p>
+The main obstacles for wider use: (a) it is very hard, or practically impossible (although
+theoretically possible) to hand-encode most of human expert knowledge in logical rules, 
+(b) proof search without intelligent guidance is really hard, (c) basic predicate logic
+without probabilities, default reasoning etc etc is extremely impractical for encoding
+commonsense knowledge.
+<p>
+There is hope for a new rise of reasoners as parts of a 
+<a href="https://bdtechtalks.com/2020/03/04/gary-marcus-hybrid-ai/">
+machine-learning-and-reasoning</a>
+hybrid systems performing common sense reasoning. Check out a 
+<a href="https://arxiv.org/abs/2003.13159">preprint</a> proposing several mechanisms
+in this direction.
+<p> 
+
+</div></div></div></div>  
+
+<button onclick="gid('syntax').style.display='none'; return false;" 
+style="margin-top: 20px;"
+      class="btn btn-small btn-default">Hide help</button> 
+      
+</div>      
+
     <!-------------------------- --->
     </div>
   </div>
 </div>
 
 <!-- footer -->
-
+<!--
 <div class="ofooter">  
   <div class="col-md-12 container ifooter">
   </div>  
 </div> 
-
+-->
+<div style="height:50px; width: 100%"> </div>
 
 <!-- modal help texts --->
 
@@ -288,37 +1118,45 @@ or just
       <div class="modal-header">
         <button type="button" class="close" data-dismiss="modal">
             <span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
-            <h4 class="modal-title" id="solveModalLabel" style="color: black;">Solve a propositional formula</h4>
+            <h4 class="modal-title" id="solveModalLabel" style="color: black;">Prove a predicate logic theorem</h4>
       </div>
-      <div class="modal-body">                        
-        <a href="http://en.wikipedia.org/wiki/Boolean_satisfiability_problem">Solving</a> a classical
-        <a href="http://en.wikipedia.org/wiki/Propositional_calculus">propositional formula</a>
-        means looking for such values of variables that the formula becomes true. For example,
-        <tt>(a -&gt; b) &amp; a</tt> becomes true if and only if both <tt>a</tt> and <tt>b</tt> are assigned true. 
-        <p><p>
-        You can select and try out several solver algorithms: 
-        the "<a href='http://en.wikipedia.org/wiki/DPLL_algorithm'>DPLL</a> better" 
-        is the best solver amongst the options. 
-        <a href="propositional.html">Read from here</a> about the differences between algorithms.
+      <div class="modal-body">    
+        <p>               
+        Basic use: pick a problem from the two boxes of examples, read the explanations and
+        press <i>Prove</i>. You can select your own problem files, edit or modify examples
+        directly in the text area of the browser. The prover runs in your browser using
+        Wasm as as a single process. 
         <p>
-        One single suitable set of values
-        is enough as a solution: the solver algorithms stop and do not try to find additional solutions. Some of the solver algorithms
-        output the suitable values, but some do not, or output a partial set.
+        If you are new to this, it is recommended to first try out and read the problems 
+        sequentially from the <i>simple examples</i> organized as a tutorial. The
+        <i>help</i> text is also useful.
         <p>
-        It may also happen that the formula is false for all possible values of variables: if so, the solver algorithms report
-        that after exhausting the search options. For example,
-        <tt>(a -&gt; b) &amp; a &amp; -b</tt> is always false.
+        Beware that when using your own TPTP-format problem as
+        input, the <i>include</i> commands, if present, should be replaced by copy-pasted 
+        content: the browser version of the prover does not attempt to download anything
+        from the web.   
         <p>
-        Notice that you can check whether some formula <i>F</i> is always true by trying to solve the 
-        <b>negated</b> formula <i>-F</i>: in case <i>-F</i> is always false, <i>F</i> must be always true.
-        <p>      
-        The algorithms may optionally output a trace of the search process. Select "html trace" to see the search
-        process: again, read <a href="propositional.html">from here</a> about the search methods used by the
-        algorithms.
+        Press the <i>Advanced</i> button for selecting the options such as time limit (default
+        5 seconds), detail level of the proof and proof format. You can also select and compose
+        your own search strategies, as well as convert a problem to various different syntaxes
+        with or without conversion to the 
+        <a href="https://en.wikipedia.org/wiki/Conjunctive_normal_form">conjunctive normal form</a>
+        actually used for search.
         <p>
-        For formula-syntax input the solvers first convert the formula to a 
-        <a href="http://en.wikipedia.org/wiki/Conjunctive_normal_form">clause normal form</a>: for certain kinds of formulas this
-        conversion step may create a huge output, but in most cases it is a sensible simplification before actual search.
+        <a href="https://en.wikipedia.org/wiki/Mathematical_proof">Proving</a> a classical
+        <a href="https://en.wikipedia.org/wiki/First-order_logic">predicate logic formula</a>
+        means showing that it is inevitably true under any circumstances. The current toolkit
+        uses the high-performance reasoner <a href="https://github.com/tammet/gkc">gkc</a>,
+        which belongs to the family of 
+        <a href="https://en.wikipedia.org/wiki/Resolution_(logic)">resolution-based</a>
+        <a href="https://en.wikipedia.org/wiki/Automated_theorem_proving">theorem provers</a>
+        trying to find a contradiction from the negation of the formula.
+        <p>
+        The prover does not attempt to show non-provability: for non-provable problems (unless
+        trivial) it typically stops only after the allocated time or space has run out.
+        <p>
+
+
         <p>
       </div>
     </div><!-- /.modal-content -->
@@ -326,127 +1164,2602 @@ or just
 </div><!-- /.modal -->
 
 
-<div class="modal fade" id="buildModal" tabindex="-1" role="dialog" 
-    aria-labelledby="buildModalLabel" aria-hidden="true">
+<div class="modal fade" id="advancedModal" tabindex="-1" role="dialog" 
+    aria-labelledby="advancedModalLabel" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content modal_login">        
       <div class="modal-header">
         <button type="button" class="close" data-dismiss="modal">
             <span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
-            <h4 class="modal-title" id="buildModalLabel">Build</h4>
+            <h4 class="modal-title" id="buildModalLabel">Advanced use</h4>
       </div>
-      <div class="modal-body">                        
-        The three building options "truth table", "clause normal form" and a "parse tree" are simple,
-        useful utilities:
-        <p><p>
-        <ul>
-        <li>
-        The <b>truth table</b>
-        prints a full  
-        <a href="http://en.wikipedia.org/wiki/Truth_table">truth table</a> 
-        of a formula up to 1024 rows: nice for checking out
-        small propositional formulas.
+      <div class="modal-body">  
         <p>
-        </li><li>
-        The <b>clause normal form</b> is a 
-        <a href="http://en.wikipedia.org/wiki/Conjunctive_normal_form">conjunctive normal form</a> just as used by
-        the solvers. The conversion algorithm used is very simple and does not perform any optimizations. In many
-        cases the optimized converters like the 
-        <a href="http://en.wikipedia.org/wiki/Tseitin_transformation">Tseitin transformation</a> 
-        would give a much smaller output much faster.
+        You can set the time limit in seconds. Beware that for long-running search processes the
+        browser may regularly propose to stop the script. The prover selects a number (typically
+        ca 30) different search strategies and tries out these sequentially, repeating the process
+        with the incrementally growing time limits. These <i>internal</i> time limits start
+        at 0.1 seconds for one search attempt.
         <p>
-        </li><li>
-        The <b>parse tree</b> prints a formula as a nested list built by the simple
-        <a href="http://en.wikipedia.org/wiki/Recursive_descent_parser">recursive descent parser</a>. 
-        This list is later used by the
-        clause normal form converter to build the form suitable for solvers. Check the parse tree in case you are
-        not sure how the system understands your formula.
-        </li>
-        </ul>
+        You can increase the print level to gain more information about what is going
+        on during the search, automatically selected search strategies and statistics. In particular,
+        selecting <i>Show derived: on</i> will cause the prover to print out all the derived clauses after
+        the search has successfully stopped. Beware: the amount can be enormous.
+        <p>
+        You can also enter your own search strategies and settings instead of using the automatically
+        generated ones: please have a look at the <i>complex: strategy</i> example for details.
+        For modern provers the search strategy
+        selection typically dominates over all the other considerations and optimizations.
+        <p>
+        Last not least, the <i>Convert to</i> button does not attempt to prove a formula,
+        but converts it to the selected format. The <i>... clauses</i> formats convert the
+        formula to the 
+        <a href="https://en.wikipedia.org/wiki/Conjunctive_normal_form">clause</a> or conjunctive
+        normal form actually used for search. The default <i>simple format</i> is explained in the 
+        <i>help</i>
+        text, the tptp format is a de facto standard format for most high-end provers (see the 
+        <a href="http://tptp.org/TPTP/TR/TPTPTR.shtml#ProblemPresentation">TPTP technical manual</a>)
+        and the json format follows the proposed  
+        <a href="https://github.com/tammet/json-ld-logic">JSON-LD-LOGIC</a> syntax.
       </div>
     </div><!-- /.modal-content -->
   </div><!-- /.modal-dialog -->
 </div><!-- /.modal -->
 
+<!-- raw examples text -->
 
-<div class="modal fade" id="generateModal" tabindex="-1" role="dialog" 
-    aria-labelledby="generateModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content modal_login">        
-      <div class="modal-header">
-        <button type="button" class="close" data-dismiss="modal">
-            <span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
-            <h4 class="modal-title" id="generateModalLabel" >Generate a problem</h4>
-      </div>
-      <div class="modal-body">                        
-        <b>Generate a problem</b> will generate an example problem in a simple 
-        <a href="http://www.domagoj-babic.com/uploads/ResearchProjects/Spear/dimacs-cnf.pdf">DIMACS format</a>
-        of a clause normal form, suitable for solvers.
-        <p><p>
-        The options for the type of a problem are:
-        <ul>
-          <li><b>random 3-sat</b> generates a random set of 
-          <a href="http://en.wikipedia.org/wiki/Boolean_satisfiability_problem#3-satisfiability">clauses of length 3</a>,
-          using the number of
-          variables you choose: problems containing more variables are, on the average, harder to solve.
-          The number of clauses is always four times the number of variables: this
-          is, on the average, a specially hard-to-solve ratio for solvers.
-          <p><p>For DPLL try out 200 variables or
-          more. Truth table solvers start running into trouble with more than 20 variables. The resolution
-          provers are a bit better than the truth table solvers, yet much worse than the DPLL solvers.</li>
-          <li><b>all combinations</b> generates a set of clauses representing all possible combinations 
-          of the input variables: any such set is unsatisfiable (i.e. no values of variables can make it true).
-          The number of clauses is hence always two to the power of the number of variables.</li>
-          <li><b>small unsat</b> generates a very small unsatisfiable clause set, consisting of a single long
-          clause containing all the variables and N single-element clauses containing all variables negated.</li>
-        </ul>
-        The <b>clear</b> button simply clears the input field and result.
-        <p>
-        You can also <b>browse</b> and read the contents of a file into the input area: essentially copy-paste from
-        a file.        
-      </div>
-    </div><!-- /.modal-content -->
-  </div><!-- /.modal-dialog -->
-</div><!-- /.modal -->
+<div hidden>
+
+<div id="example_1_input_notes"><h3>Example 1 for basics</h3>
+
+<p>This is a really trivial example.</p>
+
+<p>We will give two facts: <i>john is a father of pete</i> and
+<i>pete is a father of mark</i>. We will ask whether from these
+two facts we can derive that <i>john is a father of pete</i>: 
+obviously we can.</p>
+
+<p>The facts and the question are written in predicate logic, with the
+question posed as a negation, from which gkc derives contradiction.</p>
+
+<p>Why the negation and contradiction? This is just a convenient way to simplify
+the problem. Here we really want to prove <code>a &amp; b =&gt; a</code>. This is true
+if and only if <code>-(a &amp; b =&gt; a)</code> is false. Now, the last formula 
+is equivalent to <code>a &amp; b &amp; -a</code>. Thus 
+the input facts and rules stay as they are, and we only negate the conclusion to be proved.
+To summarize, giving
+a goal to be proved from axioms (i.e. known facts / rules) as a negated 
+statement is just a convenient way to organize proof search and there is nothing really
+special about it.</p>
+
+</div>
+
+<pre><code id="example_1_input_code">father(john,pete).
+father(pete,mark).
+
+-father(john,pete).
+
+% What this means?
+% We want to prove that from the first two facts the third is derived.
+% To do so, we prove that if we negate the third (the conclusion),
+% the conjunction of all the facts gives a contradiction.</code></pre>
+
+
+<p>Notice that each statement in the input file is terminated with a period sign.
+The list of statements is assumed to be a conjunction (<i>and</i>) of all statements. 
+Minus sign - means negation. Thus <code>-father(john,pete)</code> means 
+<i>john is NOT the father of pete</i>.</p>
+
+<p>Percentage character % is a line comment. Multi-line comments <code>/* .... */</code>
+can be used as well. </p>
+
+<p>The order of statements is not really important, although it may cause minor
+and essentially unpredictable differences in search behaviour. Essentially, gkc
+creates and tries out its own search strategies, like SQL databases. It does not
+follow a pre-determined predictable search strategy like PROLOG.</p>
+
+<div id="example_1_proof_notes">
+
+<p>The output first indicates that the proof was found.
+<p>The <code>proof</code> block gives us numbered steps of the proof found:
+each step is either a used input fact / rule or a derived fact / rule.</p>
+
+<p>The [in] means that this fact/rule was given in input.</p>
+
+<p>The [mp, 1, 2] (not exactly present in this proof) means that this fact / rule 
+was derived by modus ponens (i.e. the 
+<a href="https://en.wikipedia.org/wiki/Resolution_(logic)">resolution rule</a>)
+from previous steps 1 and 2. More concretely, the first literals of both were cut off and
+the rest were glued together.</p>
+
+<p>The [simp, 1, 2] means the same as the [mp,...] above, just a specially simple case.</p>
+
+<p>The <a href="https://en.wikipedia.org/wiki/Resolution_(logic)">Resolution (logic) wiki page</a> 
+is a good short intro to the general principles of the derivation rules with the 
+<a href="http://lambda.ee/w/images/0/06/Geoffreasoningnotes.pdf">course materials of Geoff Sutcliffe</a> 
+being a suitable continuation towards deeper understanding. However, the following examples are understandable without in-depth theoretical background.</p>
+
+<p>Try to modify the example by removing the statement <code>-father(john,pete).</code> and
+run the prover again. After ca one second it will stop and output</p>
+
+<pre><code>result: proof not found.
+</code></pre>
+
+<p>Although the task is trivial, gkc does not attempt to be clever and tries out a large number
+of search strategies: this is why it takes a second to terminate. You can try running gkc
+with the optional switch producing more information to see the whole process: click
+on the <i>Advanced</i> button and select a higher print level or set the <i>Show derived</i>
+to <i>on</i></p>
+
+<p>In case gkc does not understand the syntax of the input file it will give a json-formatted
+error indicating a culprit line and piece of input like this:</p>
+
+<pre><code>{"error": "syntax error, unexpected URI, expecting '.': file example1.txt place 'as' in line 3:
+foo bar ("}
+</code></pre>
+
+</div>
+
+<div id="example_2_input_notes"><h3>Example 2 for answers</h3>
+
+<p>Like example 1, but we want to find a concrete person as an answer: we use the special
+<code>$ans</code> predicate for this. Observe the <code>answer: $ans(pete).</code> line in the output
+stemming from this answer predicate.</p>
+
+<p>We are using a variable here: any word starting with a capital letter is considered
+to be a variable. <code>X</code> is a variable in our example. You could also use, say <code>Something</code>
+as a variable: it also starts with a capital letter. All the words starting with
+a non-capital letter are constants, functions or predicates.</p>
+
+<p>Vertical bar <code>|</code> is logical <i>or</i>. </p>
+
+<p>Importantly, any rule like <code>a &amp; b =&gt; c</code> can be represented
+as a <i>clause</i> <code>-a | -b | c</code> where negated atoms are essentially on the left side of the implication
+and the positive atoms on the right side. For example, <code>-a | -b | c | d</code> is equivalent
+to <code>(a &amp; b) =&gt; (c | d)</code>. You can use =&gt;, &lt;=&gt; and quantifiers directly like
+in <code>-father(john,X) => $ans(X)</code> or as an equivalent clause in the example.
+
+</div>
+
+<p>Input file example2.txt:</p>
+
+<pre><code id="example_2_input_code">father(john,pete).
+father(pete,mark).
+
+-father(john,X) | $ans(X).
+</code></pre>
+
+<p>Output:</p>
+
+<pre><code>result: proof found
+for example2.txt
+by run 2 fork 1 strategy {"max_seconds":1,"strategy":["unit"],"query_preference":1}
+
+answer: $ans(pete).
+proof:
+ 1: [in, axiom] father(john,pete).
+ 2: [in, axiom] -father(john,X) | $ans(X).
+ 3: [mp, 1, 2, fromaxiom] $ans(pete).
+</code></pre>
+
+<div id="example_2_proof_notes">
+<p>Notice that gkc outputs a line <code>answer: $ans(pete).</code> indicating the substitution
+made for <code>X</code>: pete is the answer we were looking for.</p>
+
+<p>Modify the example and try out the line</p>
+
+<pre><code>-father(Y,X) | $ans(Y,X).
+</code></pre>
+
+<p>You will get <code>answer: $ans(john,pete).</code> in the output.
+It is possible to force gkc to give more answers than just one: more
+about that later.</p>
+</div>
+
+<div id="example_3_input_notes"><h3>Example 3 for rules</h3>
+
+<p>Now we add a grandfather rule and ask for a grandchild of John.</p>
+
+</div>
+<p>Input file example3.txt:</p>
+
+<pre><code id="example_3_input_code">father(john,pete).
+father(pete,mark).
+
+% equivalent to (father(X,Y) &amp; father(Y,Z)) =&gt; grandfather(X,Z).
+-father(X,Y) | -father(Y,Z) | grandfather(X,Z).
+
+-grandfather(john,X) | $ans(X).
+</code></pre>
+
+
+<div id="example_4_input_notes"><h3>Example 4 for indefinite answers</h3>
+
+<p>Let us make it unclear which sons pete actually has.</p>
+
+</div>
+<p>Input file example4.txt:</p>
+
+<pre><code id="example_4_input_code">father(john,pete).
+
+% either the first or a second or both facts are true:
+father(pete,mark) | father(pete,mickey).
+
+% equivalent to (father(X,Y) &amp; father(Y,Z)) =&gt; grandfather(X,Z).
+-father(X,Y) | -father(Y,Z) | grandfather(X,Z).
+
+-grandfather(john,X) | $ans(X).
+</code></pre>
+
+<div id="example_4_proof_notes">
+
+<p>Indeed, there is no way to give a definite answer, but gkc gives a correct answer indicating
+that either mark or mickey is a grandson of john, or perhaps both are.</p>
+
+<p>The [mp, 1.2, 2, fromaxiom] means that the 2th (numeration 0,1,2,...) literal in the clause at proof step 1 
+was cut off with the first (0th) literal of the clause at proof step 2. In case the first literal is cut off,
+the N.0 is simplified to N, as in the previous examples.</p>
+
+<p>I.e. literals in a clause are numbered 0, 1, 2, etc and the number 0 is not added to the step number.</p>
+</div>
+
+<div id="example_5_input_notes"><h3>Example 5 for more rules</h3>
+
+<p>To make matters a bit more complicated, we add an ancestor rule 
+and look for ancestors of mark.</p>
+
+</div>
+<p>Input file example5.txt:</p>
+
+<pre><code id="example_5_input_code">father(john,pete).
+father(pete,mark).
+
+% equivalent to (father(X,Y) &amp; father(Y,Z)) =&gt; grandfather(X,Z).
+-father(X,Y) | -father(Y,Z) | grandfather(X,Z).
+-ancestor(X,Y) | -ancestor(Y,Z) | ancestor(X,Z).
+-father(X,Y) | ancestor(X,Y).
+
+-ancestor(X,mark) | $ans(X).
+</code></pre>
+
+<div id="example_5_proof_notes"></div>
+
+<div id="example_6_input_notes"><h3>Example 6 for equalities and functions</h3>
+
+<p>Now we reformulate the whole thing with equalities and functions! </p>
+
+<p>father(john)=pete means, as expected, that pete is the father
+of john and there can be no other fathers. If you also gave
+father(john)=lucas this would make gkc to conclude that
+pete and lucas are the same object, i.e. pete=lucas.</p>
+
+<p>Importantly, two different constants are not considered inequal
+by default (think of the constants as labels on objects: there could
+be several different labels on one object):
+<code>a=b</code> does not give a contradiction.</p>
+
+<p>Notice that the following proof does not use equalities, just functions.</p>
+</div>
+
+<pre><code id="example_6_input_code">% previously we had father(john,pete).
+father(john)=pete.
+%previously we had father(pete,mark).
+father(pete)=mark.
+% previously we had -father(X,Y) | -father(Y,Z) | grandfather(X,Z).
+grandfather(father(father(X)),X).
+-ancestor(X,Y) | -ancestor(Y,Z) | ancestor(X,Z).
+ancestor(father(X),X).
+-ancestor(X,mark) | $ans(X).</code></pre>
+
+<div id="example_6_proof_notes">
+<p>See that gkc was happily answering <code>father(mark)</code> although we have
+not said who the father of mark actually is! The functions like <code>father</code> 
+do not have to be defined on all the possible objects, they can be partially
+known and partially unknown.</p>
+</div>
+
+
+<div id="example_7_input_notes"><h3>Example 7 for equality</h3>
+Here we directly ask for a father of a father of John.
+</div>
+
+<pre><code id="example_7_input_code">% previously we had father(john,pete).
+father(john)=pete.
+% previously we had father(pete,mark).
+father(pete)=mark.
+% previously we had -father(X,Y) | -father(Y,Z) | grandfather(X,Z).
+grandfather(father(father(X)),X).
+-ancestor(X,Y) | -ancestor(Y,Z) | ancestor(X,Z).
+
+father(father(john)) != X | $ans(X).</code></pre>
+
+<div id="example_7_proof_notes">
+<p>The proof first rewrites the clause 1 with equality clauses 2 and 3 in
+the <code>[simp, 1, 2, 3]</code> step. Next it
+uses the reflexivity rule <code>r=</code> which is basically the
+standard property of equality: <code>X=X</code>.</p>
+</div>
+
+<div id="example_8_input_notes"><h3>Example 8 for multiple answers</h3>
+
+<p>Now let us look at how to get several answers, not just one.
+We will also introduce mothers and a mother-side grandfather
+rule.</p>
+
+We will use a separate json-syntax strategy text
+to tell gkc specific details of what
+to look for and how.</p>
+
+Please click on the <b>Advanced</b> button above and copy-paste the multineg.txt json 
+into the <b>Strategy</b> box, then click <b>Prove</b>.
+<p>
+<pre><code>{
+"max_answers":2,
+"strategy": ["negative_pref"]
+}
+</code></pre>
+
+<p>The <code>"max_answers":2</code> part tells gkc that it should
+try to find at least 2 answers and stop after that.</p>
+
+<p>The <code>"strategy": ["negative_pref"]</code> indicates that one specific
+strategy (here a conventional negative-preference ordered binary resolution)
+is to be used for proof search, without any parallel or sequential attempts
+with different search strategies.</p>
+</div>
+<pre><code id="example_8_input_code">
+father(john) = pete.
+father(mike) = pete.
+mother(john) = eve.
+mother(mike) = eve.
+father(pete) = mark.
+mother(eve) = mary.
+grandfather(father(father(X)),X).
+grandfather(father(mother(X)),X).
+
+-grandfather(mark,X) | $ans(X).</code></pre>
+
+<div id="example_8_proof_notes">
+<p>The <code>[=, 1, 2.0.2, fromaxiom]</code> means that the clause at step 1 was used to replace a 2th subterm
+(numbering 0,1,2,...) of the 0th atom of a clause at step 2 using equality.</p>
+
+<p>Observe that the two answers have (obviously) different proofs.</p>
+
+<p>Try to modify the strategy into ask for three answers: "max_answers":3,
+and then run gkc again. It will give the same output as before, but will add the 
+last line at the end:</p>
+
+<pre><code>result: proof not found.
+</code></pre>
+
+<p>essentially indicating that the required number of different proofs (3) were not found.  </p>
+</div>
+
+<div id="example_9_input_notes"><h3>Example algebra</h3>
+
+<p>Next we will take a question from abstract algebra,
+axiomatized wholly by equalities.</p>
+</div>
+<pre><code id="example_9_input_code">% A question from abstract algebra. Here m is an arbitrary binary
+% operation (similar to arithmetic multiplication) for 
+% which the following three axioms hold.
+
+m(X,i(X)) = e .   % i is an inverse function like one divided by X
+m(X,e) = X .      % e is a unit element like 1 when on the right side
+m(X,m(Y,Z)) = m(m(X,Y),Z) . % m is an associative operation
+
+% Question: is e also a unit element when it is on the left
+% side of multiplication m?
+%
+% We get the following clause by negating `forall X. m(e,X) = X`
+% as `exists X. m(e,X) != X`
+% and using an arbitrary unknown constant `c` for existentially 
+% quantified `X`.
+% In short, if the next clause gives contradiction, then it will
+% also give a contradiction for anything you can put in place of `c`.
+
+m(e,c) != c .
+</code></pre>
+
+<div id="example_9_proof_notes">
+<p>The proof uses given equalities to derive several new equalities.
+The <code>=</code> rule basically replaces parts of one premiss matching (unifying)
+one side of the second premiss equality with the other side of the equality.</p>
+
+<p>The <code>simp</code> rule also replaces a part of a premiss, but does so by <i>rewriting</i>,
+meaning that the original unchanged premiss is not used in the search after
+the simplification replacement.</p>
+
+<p>The <code>[=, 1, 2.0.3, fromaxiom]</code> line means that the clause at step 1 was used to replace a 3th subterm
+(numbering 0,1,2,...) of the 0th atom of a clause at step 2 using equality.</p>
+
+</div>
+
+<div id="example_10_input_notes"><h3>Example with an unprovable problem</h3>
+
+<p>A simple clause set in this example produces an unlimited number of clauses like</p>
+
+<pre><code>p(f(a))
+p(f(f(a)))
+p(f(f(f(a)))
+...
+</code></pre>
+
+<p>and obviously does not lead to a contradiction.</p>
+
+<p>However, gkc does not attempt to detect unprovability and will
+run either forever or for a very long time, until the browser complains
+and asks you to stop, or it runs out of allocated time or memory.</p>
+<p><b>NB!</b> You will have to <b>reload</b> the page after you stop the script, otherwise
+the page will be unresponsive.</p>
+
+<p>
+It is a good idea to click on the <b>Advanced</b> button and enter a sensible
+time limit to the <b>Seconds</b> box.
+</div>
+
+<pre><code id="example_10_input_code">p(a).
+-p(X) | p(f(X)).
+  </code></pre>
+
+<div id="example_10_proof_notes"></div>
+
+<div id="example_11_input_notes"><h3>Example with a hard problem</h3>
+
+<p>As an example of a small but a really hard problem for gkc which is
+nevertheless actually provable, try the problem 
+<a href="http://www.tptp.org/cgi-bin/SeeTPTP?Category=Problems&Domain=LCL&File=LCL876+1.p">LCL876+1</a>
+from the <a href="http://www.tptp.org/">TPTP</a> collection.
+
+<p>It will probably run until the browser complains badly 
+or time given by the automatic strategy selection runs out.</p>
+
+<p><b>NB!</b> You will have to <b>reload</b> the page after you stop the script, otherwise
+  the page will be unresponsive.</p>  
+
+<p>Of course, it is likely that with a suitable search strategy
+gkc will find a proof using a sensible amount of time and memory. Currently
+we are simply unaware of which strategy it would be!</p>
+</div>
+
+<pre><code id="example_11_input_code">(is_a_theorem(implies(X,Y)) & is_a_theorem(X)) => is_a_theorem(Y).
+is_a_theorem(implies(X,implies(Y,X))).
+is_a_theorem(implies(implies(X,Y),implies(implies(Y,Z),implies(X,Z)))).
+is_a_theorem(implies(implies(implies(X,Y),Y),implies(implies(Y,X),X))).
+is_a_theorem(implies(implies(not(X),not(Y)),implies(Y,X))).
+is_a_theorem(implies(implies(implies(X,Y),implies(Y,X)),implies(Y,X))).
+</code></pre>
+
+<div id="example_11_proof_notes"></div>
+
+<div id="example_12_input_notes"><h3>Blocks world</h3>
+
+<p><a href="https://en.wikipedia.org/wiki/Blocks_world">Blocks world</a>
+is a classic family of toy problems: there is a robot arm
+able to lift single blocks and to put them on top of other blocks.</p>
+
+<p>The goal is to find a sequence of robot arm movements to produce
+a required configuration of blocks: for example, a tower. The comments
+in the problem text explain the initial situation and the arm movement
+rules.
+</p>
+
+<p>Without a specialized search strategy these planning problems
+tend to be surprisingly hard for provers, including gkc.</p>
+<p>
+While the question posed is simple, there are two harder
+example questions at the end of the problem: comment the
+current one out and remove comments from one of the alternative
+questions. Increase the time limit in the <i>Advanced</i> section
+box of <i>Seconds</i>.
+</div>
+<pre><code id="example_12_input_code">% -----------------------------------
+%
+% See https://en.wikipedia.org/wiki/Blocks_world
+% 
+% -----------------------------------
+
+% ----- initial situation s0 ------
+%
+%           c 
+%   a   b   d
+%  ------------------------------
+
+holds(on(a,table),s0).
+holds(on(b,table),s0).
+holds(on(c,d),s0).
+holds(on(d,table),s0).
+holds(clear(a),s0).
+holds(clear(b),s0).
+holds(clear(c),s0).
+holds(empty,s0).
+holds(clear(table),State).
+
+% ---- difference of objects -----
+
+    
+differ(X,Y)
+    | -differ(Y,X).
+
+differ(a,b).
+differ(a,c).
+differ(a,d).
+differ(a,table).
+differ(b,c).
+differ(b,d).
+differ(b,table).
+differ(c,d).
+differ(c,table).
+differ(d,table).
+
+% ----- pickup rules  ------
+
+holds(holding(X),do(pickup(X),State))
+    | -holds(empty,State)
+    | -holds(clear(X),State)
+    | -differ(X,table).
+
+holds(clear(Y),do(pickup(X),State))
+    | -holds(on(X,Y),State)
+    | -holds(clear(X),State)
+    | -holds(empty,State).
+
+% --- frame axioms for pickup ----
+%
+% see https://en.wikipedia.org/wiki/Frame_problem
+% 
+
+holds(on(X,Y),do(pickup(Z),State))
+    | -holds(on(X,Y),State)
+    | -differ(X,Z).
+
+holds(clear(X),do(pickup(Z),State))
+    | -holds(clear(X),State)
+    | -differ(X,Z).
+
+% ---- putdown rules -----
+
+holds(empty,do(putdown(X,Y),State))
+    | -holds(holding(X),State)
+    | -holds(clear(Y),State).
+
+holds(on(X,Y),do(putdown(X,Y),State))
+    | -holds(holding(X),State)
+    | -holds(clear(Y),State).
+
+holds(clear(X),do(putdown(X,Y),State))
+    | -holds(holding(X),State)
+    | -holds(clear(Y),State).
+
+% ---- frame axioms for putdown -----
+%
+% see https://en.wikipedia.org/wiki/Frame_problem
+% 
+
+holds(on(X,Y),do(putdown(Z,W),State))
+    | -holds(on(X,Y),State).    
+
+holds(clear(Z),do(putdown(X,Y),State))
+    | -holds(clear(Z),State)
+    | -differ(Z,Y).
+
+% ----- query 1 -----------------
+%
+% build a tower:
+%
+%   c
+%   b        
+%   a   
+%
+% ------------------------------- 
+
+
+-holds(on(b,a),State) | -holds(on(c,b),State) | $ans(State).
+
+
+% ----- query 2 -----------------
+%
+% this is a harder problem: to try it out,
+% comment out query 1 and uncomment the following
+%
+% build a tower:
+%
+%   c
+%   b        
+%   a   
+%   d
+% -------------------------------
+
+
+% cnf(prove,negated_conjecture,
+%   -holds(on(a,d),State) | -holds(on(b,a),State) | -holds(on(c,b),State) | $ans(State)).   
+  
+  
+% ----- query 3 -----------------
+%
+% this harder problem is a case of Sussman anomaly
+% https://en.wikipedia.org/wiki/Sussman_anomaly :
+% to try it out,
+% comment out queries 1 and 2 and uncomment the following
+%
+% build a tower:
+%
+%   b
+%   a        
+%   d   
+%   c
+% -------------------------------
+
+
+%cnf(prove,negated_conjecture,
+%   -holds(on(d,c),State) | -holds(on(a,d),State) | -holds(on(b,a),State) | $ans(State)). 
+</code></pre>
+
+<!--
+<div id="example_14_input_notes"><h3>Example 14 for</h3>
+intro 14 
+</div>
+<pre>
+<code id="example_14_input_code">code 14
+</code>
+</pre>
+<div id="example_14_proof_notes">
+note 14
+</div>
+
+<div id="example_14_input_notes"><h3>Example 14 for</h3>
+intro 14 
+</div>
+<pre>
+<code id="example_14_input_code">code 14
+</code>
+</pre>
+<div id="example_14_proof_notes">
+note 14
+</div>
+-->
+
+<div id="example_13_input_notes"><h3>Example 13 for various characters</h3>
+
+<p>This is not a really advanced topic, but important. 
+</p>
+
+<p>Gkc follows the
+<a href="http://tptp.org/TPTP/TR/TPTPTR.shtml#FormulaeSection">TPTP conventions</a> 
+in the way it treats special characters, with a few
+additions. A normal symbol must not contain any whitespace or non-alphanumeric characters
+like (, -, ~, =, ", comma etc: however, underscore _ and dollar $ are allowed, with
+predicates and functions with a special predefined meaning being prefixed
+with a dollar $.</p>
+
+<p>You can put whitespace or any symbol (single quotes inside quoted
+symbols must be prefixed by a backslash) into symbols by surrounding the symbol 
+with single quote symbols like this: 
+<code>'John \'Smith\'!'</code> which is treated as a constant, despite that
+it starts with a capital letter inside the quotes.
+
+<p>Any symbol containing a character except an ascii letter, digit, underscore _,
+or dollar $ will be printed out by surrounding it with single quotes.
+As an exception in gkc, equality = and conveniece infix forms of
+arithmetic expressions +, *, -, /, will not be surrounded by quotes. </p>
+
+<p><i>Double quotes</i> like <code>"John Smith"</code> indicate that
+a symbol is <i>distinct</i>, i.e. unequal to any other distinct symbol,
+number or a typed object. Double quotes inside double quoted symbols must
+be prefixed by a backslash. More about distinct symbols in the later examples.</p>
+
+<p>Additionally gkc allows to make a symbol variable by prefixing it with a question
+mark like this: <code>?smth</code>. Any symbol starting with a capital letter or a question mark 
+is assumed to be a variable, and the rest are not. </p>
+
+<p>This holds for both the simple syntax in the previous examples and the 
+TPTP <i>fof</i> formulas to be described next. </p>
+
+<p>Thus, for gkc in <i>fof</i> formulas a capital-letter-starting symbol is a 
+<i>free</i> variable even if
+it is not explicitly quantified: since this could be confusing, it
+may be better to avoid such symbols unless they are explicitly quantified.</p>
+
+<p>You can also use integers like 71 or period-separated decimals like 1.35
+as constants.</p>
+
+<p>Gkc is agnostic towards using different character encodings: it uses
+c-strings, i.e. 0-terminated byte sequences and does not care about encodings.</p>
+
+</div>
+<pre>
+<code id="example_13_input_code">p('John \'Smith\'!').
+p(X) => $ans(X).
+</code>
+</pre>
+<div id="example_13_proof_notes">
+</div>
+
+<div id="example_14_input_notes"><h3>Example 14 for TPTP syntax with steam</h3>
+
+This example is a classic "Schubert's Steamroller" puzzle taken from
+TPTP and written in fof syntax with connectives like implication as <code>=&gt;</code>, 
+quantifiers <i>for all</i> as <code>! [X] ..,</code>, <i>exists</i> as 
+<code>? [X] ... </code> etc.
+<p>
+The full list of infix binary connectives follows the TPTP language:
+<ul>
+<li><code>"|"</code> for disjunction,
+<li><code>"&"</code> for conjunction, 
+<li><code>"&lt;=>"</code> for equivalence, 
+<li><code>"=>"</code> for implication, 
+<li><code>"&lt;="</code> for reverse implication, 
+<li><code>"&lt;~>"</code> for non-equivalence (XOR), 
+<li><code>"~|"</code> for negated disjunction (NOR), 
+<li><code>"~&"</code> for negated conjunction (NAND), 
+<li><code>"@"</code> for application, used mainly in the higher-order context in TPTP.
+</ul>
+<p>
+See the official <a href="http://tptp.org/TPTP/TR/TPTPTR.shtml#FormulaeSection">fof syntax</a> and
+<a href="http://www.tptp.org/cgi-bin/SeeTPTP?Category=Problems&amp;Domain=SYN&amp;File=SYN000+1.p">fof example</a>
+in <a href="http://www.tptp.org">TPTP</a>.</p>
+
+<p>Gkc will first convert the complex formulas to a simple clause form (properly called
+<i>clause normal form</i>) used in the previous examples. The statements we had in these
+examples are called <i>clauses</i>. </p>
+
+<p>Each statement in the <i>TPTP fof language</i> 
+  is terminated with a period symbol . and has a structure</p>
+
+<pre><code>fof(statement_name, statement_role, statement).
+</code></pre>
+
+<p>where the statement <i>name</i> will be used in the proof, the statement <i>role</i> indicates whether
+it is an axiom, an assumption or hypothesis, or a goal to be proved from these: the latter is either
+conjecture (which has to be negated) or negated_conjecture (negated already).</p>
+
+<p>Indicating the role enables provers to find a more suitable strategy. It does not (except the
+conjecture case, which has to be negated) have a <i>logical</i> meaning.</p>
+
+<p>The first formula in the example is universally quantified (<code>!</code> symbol)
+and will be converted by gkc to a <i>clause</i> <code>-wolf(X) | animal(X).</code>.
+
+<p>The second statement is existentially quantified (<code>?</code> symbol) and will 
+be converted by gkc to a clause <code>wolf($sk7).</code>
+where <code>$sk7</code> is a new constant invented by gkc which should not occur 
+in any other formula in the problem:
+this procedure is called <a href="https://en.wikipedia.org/wiki/Skolem_normal_form">Skolemization</a>.
+Gkc always uses the <code>$sk</code> prefix for such constants and functions, using a new number <i>N</i>
+for each new one. The original formula is assumed not to contain <code>$skN</code> form symbols.</p>
+
+<p>The last statement expresses the question to be proved: is 
+there an animal that likes to eat a grain eating animal?
+It has a conjecture role and has to be first negated and then converted to 
+a clause:</p>
+
+<pre><code>-eats(X,Y) | -eats(Z,X) | -grain(Y) | -animal(X) | -animal(Z).
+</code></pre>
+
+<p>In general, one formula in the input may create several clauses and the optimized
+algorithm for creating such clauses is nontrivial, sometimes involving mini-scoping and the creation of new
+definitions (new predicates) to make the size and number of generated clauses smaller.</p>
+
+</div>
+<pre><code id="example_14_input_code">fof(pel47_1_1,axiom,
+  ( ! [X] :
+      ( wolf(X)
+      => animal(X) ) )).
+
+fof(pel47_1_2,axiom,
+  ( ? [X1] : wolf(X1) )).
+
+fof(pel47_2_1,axiom,
+  ( ! [X] :
+      ( fox(X)
+      => animal(X) ) )).
+
+fof(pel47_2_2,axiom,
+  ( ? [X1] : fox(X1) )).
+
+fof(pel47_3_1,axiom,
+  ( ! [X] :
+      ( bird(X)
+      => animal(X) ) )).
+
+fof(pel47_3_2,axiom,
+  ( ? [X1] : bird(X1) )).
+
+fof(pel47_4_1,axiom,
+  ( ! [X] :
+      ( caterpillar(X)
+      => animal(X) ) )).
+
+fof(pel47_4_2,axiom,
+  ( ? [X1] : caterpillar(X1) )).
+
+fof(pel47_5_1,axiom,
+  ( ! [X] :
+      ( snail(X)
+      => animal(X) ) )).
+
+fof(pel47_5_2,axiom,
+  ( ? [X1] : snail(X1) )).
+
+fof(pel47_6_1,axiom,
+  ( ? [X] : grain(X) )).
+
+fof(pel47_6_2,axiom,
+  ( ! [X1] :
+      ( grain(X1)
+      => plant(X1) ) )).
+
+fof(pel47_7,axiom,
+  ( ! [X] :
+      ( animal(X)
+      => ( ! [Y] :
+            ( plant(Y)
+            => eats(X,Y) )
+        | ! [Y1] :
+            ( ( animal(Y1)
+              & much_smaller(Y1,X)
+              & ? [Z] :
+                  ( plant(Z)
+                  & eats(Y1,Z) ) )
+            => eats(X,Y1) ) ) ) )).
+
+fof(pel47_8,axiom,
+  ( ! [X,Y] :
+      ( ( bird(Y)
+        & ( snail(X)
+          | caterpillar(X) ) )
+      => much_smaller(X,Y) ) )).
+
+fof(pel47_9,axiom,
+  ( ! [X,Y] :
+      ( ( bird(X)
+        & fox(Y) )
+      => much_smaller(X,Y) ) )).
+
+fof(pel47_10,axiom,
+  ( ! [X,Y] :
+      ( ( fox(X)
+        & wolf(Y) )
+      => much_smaller(X,Y) ) )).
+
+fof(pel47_11,axiom,
+  ( ! [X,Y] :
+      ( ( wolf(X)
+        & ( fox(Y)
+          | grain(Y) ) )
+      => ~ eats(X,Y) ) )).
+
+fof(pel47_12,axiom,
+  ( ! [X,Y] :
+      ( ( bird(X)
+        & caterpillar(Y) )
+      => eats(X,Y) ) )).
+
+fof(pel47_13,axiom,
+  ( ! [X,Y] :
+      ( ( bird(X)
+        & snail(Y) )
+      => ~ eats(X,Y) ) )).
+
+fof(pel47_14,axiom,
+  ( ! [X] :
+      ( ( caterpillar(X)
+        | snail(X) )
+      => ? [Y] :
+          ( plant(Y)
+          & eats(X,Y) ) ) )).
+
+fof(pel47,conjecture,
+  ( ? [X,Y] :
+      ( animal(X)
+      & animal(Y)
+      & ? [Z] :
+          ( grain(Z)
+          & eats(Y,Z)
+          & eats(X,Y) ) ) )).
+</code></pre>
+  
+
+<div id="example_14_proof_notes">
+
+<p>The simple format proof contains only clauses created from the formulas: the original names of
+formulas used are indicated like</p>
+
+<pre><code>[in,pel47_1_2, axiom] wolf($sk7).
+</code></pre>
+
+<p>
+The simple output format used in all the previous examples does not directly contain
+the original input formulas of the fof language of TPTP and the steps in conversion, 
+only the names of the formulas. TPTP suggests using a particular
+format of output, including the original input before clausification,
+proved-successfully-marker, and the begin and end markers of proof.</p>
+
+<p>To use the TPTP suggested output format, select <i>TPTP format</i> from the
+box after <b>Convert to</b> button and press <b>Prove</b> again. 
+
+<p>
+Try out the <i>json</i> format as well: the details of the json syntax for
+formulas are given in the <a href="https://github.com/tammet/json-ld-logic">JSON-LD-LOGIC</a>
+specification proposal and examples can be tried out in the <a href="../json.html">json
+playground</a>.
+<p>
+You can also convert the input example to different equivalent input
+formats by selecting the format from the box and clicking 
+the <b>Convert to</b> button. In particular, check out the difference
+between <i>TPTP clauses</i> and the <i>simple clauses</i>: the former
+wraps all clauses with the special
+<code>cnf(statement_name, statement_role, statement)</code> form, otherwise
+these two are equivalent.
+</div>
+
+
+
+<div id="example_15_input_notes"><h3>Steam using simple formulas</h3>
+
+<p>
+Gkc allows the TPTP formula syntax to be used without the <code>fof(nam,role,formula)</code>
+wrapping. The current example is exactly the same as the previous example,
+but this time without wrapping, except for the last formula: it is useful to indicate
+the <i>role</i> of the question, which can be only done using the wrapped syntax.
+<p>
+Gkc does not know which clause is a question: this is ok,
+but it is bad for efficiency in case of large clause sets.</p>
+<p>
+  There is a simple way to tell gkc that some clause or a formula is indeed a question
+and gkc should heavily focus on that clause or a formula.</p>
+<p>Instead of writing your negated question like</p>
+
+<pre><code>-father(john,pete).
+</code></pre>
+
+<p>write it with this wrapping  as a fof formula (observe double parentheses at the end)</p>
+
+<pre><code>fof(q1,negated_conjecture,
+    -father(john,pete)).
+</code></pre>
+
+<p>or a cnf formula (i.e. simple clause) in TPTP language</p>
+
+<pre><code>cnf(q1,negated_conjecture,
+    -father(john,pete)).
+</code></pre>
+
+<p>and then gkc knows that this clause should get priority in search.</p>
+
+<p>Similarly, you can tell gkc that a clause or a formula is not just
+an arbitrary axiom which may or may not be used, but an important
+assumption likely to be used in the proof:</p>
+
+<pre><code>cnf(a1,assumption,
+    person(john)).
+</code></pre>
+
+</div>
+<pre><code id="example_15_input_code">! [X] : ( wolf(X) => animal(X) ).
+? [X1] : wolf(X1).
+! [X] :  ( fox(X) => animal(X) ).
+? [X1] : fox(X1).
+! [X] :  ( bird(X) => animal(X) ).
+? [X1] : bird(X1).
+! [X] :  ( caterpillar(X) => animal(X) ).
+? [X1] : caterpillar(X1).
+! [X] : ( snail(X) => animal(X) ).
+? [X1] : snail(X1).
+? [X] : grain(X).
+! [X1] : ( grain(X1) => plant(X1) ).
+
+! [X] :
+    ( animal(X)
+    => ( ! [Y] :
+          ( plant(Y)
+          => eats(X,Y) )
+      | ! [Y1] :
+          ( ( animal(Y1)
+            & much_smaller(Y1,X)
+            & ? [Z] :
+                ( plant(Z)
+                & eats(Y1,Z) ) )
+          => eats(X,Y1) ) ) ).
+
+! [X,Y] :
+    ( ( bird(Y)
+      & ( snail(X)
+        | caterpillar(X) ) )
+    => much_smaller(X,Y) ).
+
+! [X,Y] :
+    ( ( bird(X)
+      & fox(Y) )
+    => much_smaller(X,Y) ).
+
+! [X,Y] :
+    ( ( fox(X)
+      & wolf(Y) )
+    => much_smaller(X,Y) ).
+
+! [X,Y] :
+    ( ( wolf(X)
+      & ( fox(Y)
+        | grain(Y) ) )
+    => ~ eats(X,Y) ).
+
+! [X,Y] :
+    ( ( bird(X)
+      & caterpillar(Y) )
+    => eats(X,Y) ).
+
+! [X,Y] :
+    ( ( bird(X)
+      & snail(Y) )
+    => ~ eats(X,Y) ).
+
+! [X] :
+    ( ( caterpillar(X)
+      | snail(X) )
+    => ? [Y] :
+        ( plant(Y)
+        & eats(X,Y) ) ).
+
+fof(pel47,conjecture,
+    ( ? [X,Y] :
+        ( animal(X)
+        & animal(Y)
+        & ? [Z] :
+            ( grain(Z)
+            & eats(Y,Z)
+            & eats(X,Y) ) ) )).         
+</code></pre>
+
+
+<div id="example_15_proof_notes"></div>
+
+<div id="example_16_input_notes"><h3>Example 16 for the strategy</h3>
+By default gkc automatically selects a number of strategies to run one-by one
+and outputs either message that the proof was found along with the proof or a message
+that no proof was found.</p>
+
+<p>You can tell gkc the exact strategy by entering
+the json format strategy text like this into the 
+<i>Strategy as json text</i> box:</p>
+
+<pre><code>{
+"print_level": 15,
+"max_seconds": 1,
+"strategy":["hardness_pref"],
+"query_preference":1  
+}
+</code></pre>  
+
+<p>There are two somewhat different ways to write the strategy file:
+either indicate a single strategy (single run) like in the example above
+or multiple runs like this:</p>
+
+<pre><code>{
+"print_level": 15,
+"runs":[
+{"max_seconds": 1,"strategy":["unit"],"query_preference":0},
+{"max_seconds": 1,"strategy":["unit"],"query_preference":1},
+{"max_seconds": 1,"strategy":["negative_pref"],"query_preference":0},
+{"max_seconds": 1,"strategy":["negative_pref"],"query_preference":1},
+{"max_seconds": 1,"strategy":["negative_pref"],"query_preference":0,"weight_select_ratio":100, "depth_penalty":100, "length_penalty":100},
+{"max_seconds": 1,"strategy":["hardness_pref","posunitpara"],"query_preference":0,"weight_select_ratio":20,"depth_penalty": 50, "length_penalty":100},
+
+{"max_seconds": 5,"strategy":["unit"],"query_preference":0},
+{"max_seconds": 5,"strategy":["unit"],"query_preference":1},
+{"max_seconds": 5,"strategy":["negative_pref"],"query_preference":0}
+]
+}
+</code></pre>
+
+<p>In the latter case gkc will try out all these strategies in that order</p>
+
+<p>A simple way to obtain such run sequences is to use the <i>Print level</i> select box
+value <i>+ Statistics</i> which will then automatically construct and print out a suitable full strategy json
+with many runs, which you can simply copy and paste into your own file for later modification.</p>
+
+<p>The default value for limit-type fields starting with max_ is 0, indicating that no limit is set.</p>
+
+<p>In case "equality": N is not set to 0, GKC uses reflexivity, paramodulation and demodulation 
+with knuth-bendix ordering for handling equality.</p>
+
+<p>The list "strategy": [...] contains the main search strategy indicators, default off:</p>
+
+<ul>
+<li>"query_focus" : use a goal-oriented set-of-support strategy with binary resolution</li>
+<li>"negative_pref" : use binary resolution with negative literals preferred</li>
+<li>"positive_pref" : use binary resolution with positive literals preferred</li>
+<li>"hardness_pref" : use binary resolution with "hardest" (similar to weight) literals preferred</li>
+<li>"knuthbendix_pref" : use binary resolution with knuth-bendix ordering of literals</li>
+<li>"hyper" : use hyperresolution, with negative literals preferred</li>
+<li>"posunitpara": perform paramodulation from units only</li>
+<li>"prohibit_nested_para": disallow paramodulation if either parent is derived by paramodulation</li>
+<li>"max_ground_weight": use the weight of the heaviest literal as the base weight of a clause</li>
+<li>"unit", "double" or "triple" : use binary unit resolution or its generalization: (one of the arguments must be unit, a two-literal or three-literal clause, <br />
+respectively. These may be added to the list in addition to the previous strategy indicators, for example, like ["query_focus","unit"].</li>
+</ul>
+
+<p>Other useful parameters, to be used outside the "strategy": [...] list:</p>
+
+<ul>
+<li>"print": 0 or 1, where 0 prohibits almost all printing, default 1.</li>
+<li>"print_level": integer determining the level of output: useful values are between 0 and 50, default 10, for -tptp 1 gkc uses 15.</li>
+<li>"print_json": 0 or 1, where 0 is default and 1 forces json output.</li>
+<li>"print_tptp": 0 or 1, where 0 is default and 1 forces tptp-style proof output</li>
+<li>"max_size", "max_length", "max_depth", "max_weight" indicate limits on kept clauses, defaults are 0.</li>
+<li>"equality" : 1 or 0, with 1 being default and 0 prohibiting equality handling.</li>
+<li>"rewrite" : 1 or 0, with 1 being default and 0 prohibiting using equations for rewriting.</li>
+<li>"max_dseconds": N being an integer limit of tenths of seconds for one run, default 0 (no limit).</li>
+<li>"max_seconds": N being an integer limit of seconds for one run, default 0 (no limit). This is an alternative
+  to the "max_dseconds" key.
+</li>
+<li>"weight_select_ratio": N indicating the ratio of picking by order derived / clause weight, default is 5.</li>
+<li>"max_answers": N indicating the maximal number of proofs searched for until search stops, default is 1.</li>
+<li>"reverse_clauselist": N either default 0 or 1, where 1 follows the actual order for input clauses, starting from the end.</li>
+<li>"sine": input filter with N either 1 or 2 where 1 is a less restrictive (accepts more clauses) and 2 more restrictive. NB! Sine is automatically switched off if the -provekb switch is used.</li>
+<li>"depth_penalty": additional penalty for clause depth, default 1</li>
+<li>"length_penalty": additional penalty for clause length, default 1</li>
+<li>"var_weight": weight of a variable, default 5</li>
+<li>"var_weight": weight of a repeated variable, default 7</li>
+<li>"query_preference": N being 0, 1, 2 or 3 indicates which parts of the problem are treated as goals, assumptions or axioms:
+  0 stands for no goal/assumption preference.
+  1 stands for input preference (the assumption and conjecture formulas of fof)
+  2 stands for making non-included formulas assumptions
+  3 stands for considering only the negative clauses from conjecture to be goals</li>
+</ul>
+
+<p>For "max_seconds"&lt;2 gkc will automatically use immediate check for contradiction when a clause is derived. </p>
+
+For the current example gkc tries out 16 search strategies before it hits a suitable one:
+you can give it the following search strategy to find the proof very quickly:
+<pre><code>{
+"print_level": 15,
+"runs":[
+{"max_seconds":1,"strategy":["hardness_pref"],"query_preference":1}
+]
+}
+</code></pre>
+
+</div>
+<pre>
+<code id="example_16_input_code">% File     : SWV237+1 : TPTP v7.3.0. Released v3.2.0.
+% Domain   : Software Verification (Security)
+% Problem  : Visa Security Module (VSM) attack
+% Version  : Especial.
+% English  : This models the API of the Visa Security Module (VSM). The
+%            conjecture allows the discovery of Bond's attack.
+% Refs     : [BA01]  Bond & Anderson (2001), API-Level Attacks on Embedded
+%          : [Ste06] Steel (2006), Email to G. Sutcliffe
+
+fof(enc_dec_cancel,axiom,(
+  ! [U,V] : enc(i(U),enc(U,V)) = V )).
+
+fof(dec_enc_cancel,axiom,(
+    ! [U,V] : enc(U,enc(i(U),V)) = V )).
+
+fof(double_inverse_cancel,axiom,(
+    ! [U] : i(i(U)) = U )).
+
+fof(keys_are_symmetric,axiom,(
+    ! [U] :
+      ( p(U)
+     => p(i(U)) ) )).
+
+fof(key_translate_from_ZCMK_to_TMK,axiom,(
+    ! [U,V,W] :
+      ( ( p(U)
+        & p(V)
+        & p(W) )
+     => p(enc(tmk,enc(i(enc(i(zcmk),V)),U))) ) )).
+
+fof(key_translate_from_TMK_to_ZCMK,axiom,(
+    ! [U,V,W] :
+      ( ( p(U)
+        & p(V)
+        & p(W) )
+     => p(enc(i(enc(i(zcmk),V)),enc(i(tmk),U))) ) )).
+
+fof(receive_working_key_from_switch,axiom,(
+    ! [U,V,W] :
+      ( ( p(U)
+        & p(V)
+        & p(W) )
+     => p(enc(wk,enc(i(tmk),U))) ) )).
+
+fof(encrypt_a_PIN_derivation_key_under_a_TMK,axiom,(
+    ! [U,V,W] :
+      ( ( p(U)
+        & p(V)
+        & p(W) )
+     => p(enc(enc(i(tmk),V),enc(i(tmk),U))) ) )).
+     fof(encrypt_a_stored_comms_key,axiom,(
+      ! [U,V,W] :
+        ( ( p(U)
+          & p(V)
+          & p(W) )
+       => p(enc(enc(i(tmk),V),enc(i(tc),U))) ) )).
+  
+%----This command now removed from normal VSM operation to fix attack
+fof(encrypt_clear_key_as_Tcomms_key,axiom,(
+  ! [U,V,W] :
+    ( ( p(U)
+      & p(V)
+      & p(W) )
+    => p(enc(tc,U)) ) )).
+
+fof(data_encrypt,axiom,(
+  ! [U,V,W] :
+    ( ( p(U)
+      & p(V)
+      & p(W) )
+    => p(enc(enc(i(tc),U),V)) ) )).
+
+fof(data_decrypt,axiom,(
+  ! [U,V,W] :
+    ( ( p(U)
+      & p(V)
+      & p(W) )
+    => p(enc(i(enc(i(tc),U)),V)) ) )).
+
+fof(data_translate_PIN_from_local_to_interchange_key,axiom,(
+  ! [U,V,W] :
+    ( ( p(U)
+      & p(V)
+      & p(W) )
+    => p(enc(enc(i(wk),W),enc(i(enc(i(tmk),V)),U))) ) )).
+    fof(data_translate_between_interchange_keys,axiom,(
+    ! [U,V,W] :
+      ( ( p(U)
+        & p(V)
+        & p(W) )
+      => p(enc(enc(i(wk),W),enc(i(enc(i(wk),V)),U))) ) )).
+
+%----Bond unsure if this command actually implemented in VSM
+fof(data_translate_PIN_from_local_storage_to_interchange_key,axiom,(
+    ! [U,V,W] :
+      ( ( p(U)
+        & p(V)
+        & p(W) )
+      => p(enc(enc(i(wk),V),enc(i(lp),U))) ) )).
+
+fof(attacker_can_encrypt,axiom,(
+    ! [U,V,W] :
+      ( ( p(U)
+        & p(V)
+        & p(W) )
+      => p(enc(U,V)) ) )).
+%----Initial knowledge of intruder
+fof(intruder_knows_1,axiom,(
+    p(enc(tmk,pp)) )).
+
+fof(intruder_knows_2,axiom,(
+    p(enc(wk,w)) )).
+
+fof(intruder_knows_3,axiom,(
+    p(enc(w,t1)) )).
+
+fof(intruder_knows_4,axiom,(
+    p(enc(lp,t2)) )).
+
+fof(intruder_knows_5,axiom,(
+    p(enc(tc,k)) )).
+
+fof(intruder_knows_6,axiom,(
+    p(kk) )).
+
+fof(intruder_knows_7,axiom,(
+    p(i(kk)) )).
+
+fof(intruder_knows_8,axiom,(
+    p(a) )).
+
+%----Goal for the attacker is to make a PIN (enc(pp,a))
+fof(co1,conjecture,(
+    p(enc(pp,a)) )).    
+</code>
+</pre>
+<div id="example_16_proof_notes"></div>
+
+<div id="example_17_input_notes"><h3>Example 17 for arithmetic</h3>
+
+<p>Gkc supports integers and floating point numbers along with
+basic arithmetic operators, but does not provide
+any axioms or built-in knowledge for the properties of arithmetic operators,
+except simple evaluation.
+</p>
+
+Citing TPTP: the extent to which ATP systems are able to work with the arithmetic predicates and
+functions can vary, from a simple ability to evaluate ground terms, e.g., 
+<code>$sum(2,3)</code> can be evaluated to <code>5</code>, through an ability to instantiate variables 
+in equations involving such functions, e.g., <code>$product(2,$uminus(X)) = $uminus($sum(X,2))</code>
+can instantiate <code>X</code> to <code>2</code>, to extensive algebraic manipulation capability. 
+
+<p>As a trivial practical example gkc is unable to find that</p>
+
+<pre><code>-p(5).
+p(2+X).
+</code></pre>
+
+<p>is contradictory. This would require either solving the equation 5=2+X or
+generating an ever-growing set of numberic instances of clauses, none
+of which gkc currently attempts.</p>
+<p>However, for the last example one can construct a number-generating
+clause set - which essentially enforces the creation of numeric 
+instances - like this:</p>  
+<pre><code>-p(5).
+n(0).
+-n(X) | n(1+X).
+-n(X) | p(2+X).
+</code></pre>
+<p>leading to a proof.</p>
+
+The same general principle holds for lists and distinct symbols interpreted as strings.
+<p>
+This said, the numbers and arithmetic functions and predicates are defined following the 
+<a href="http://www.tptp.org/TPTP/TR/TPTPTR.shtml#Arithmetic">TPTP arithmetic system</a>
+plus a few convenience operators for writing infix terms:
+<ul>
+<li>Type detection predicates $is_int, $is_real.
+<li>Comparison predicates $less, $lesseq, $greater, $greatereq.
+<li>Type conversion functions $to_int, $to_real.
+<li>Arithmetic functions on integers and reals:
+$sum", "$difference", "$product", 
+"$quotient", "$quotient_e",
+"$remainder_e", "$remainder_t", "$remainder_f", 
+"$floor", "$ceiling",
+"$uminus", "$truncate", "$round.
+ <p>
+ Note: these comparison predicates and arithmetic functions take exactly two arguments.
+<p>
+ Example: <code>$less($sum(1,$to_int(2.1)),$product(3,3))</code>.
+
+<li>Additional convenience predicate is used: $is_number is true
+if and only if $is_int or $is_real is true.
+
+<li>Additional infix convenience functions +, -, *, / are
+used with the same meaning as $sum, $difference, $product and 
+$quotient, respectively.
+<p>
+Example: <code>$less(1+(1+2),(3*3))</code>
+<p>
+Note: these convenience functions take also exactly two arguments.
+</ul>
+<p><b>NB!</b> Do not use a variable or a non-numeric constant as a first element of the 
+infix arithmetic expression like <code>p(X*2)</code>, otherwise 
+the whole expression will be parsed as a single variable <i>X*2</i>. No such restrictions
+apply for the prefix form.
+</div>
+<pre><code id="example_17_input_code">p(2).
+-p(X) | p(2*X).
+-p(X) | $less(X,128).
+</code>
+</pre>
+<div id="example_17_proof_notes">
+</div>
+
+
+
+<div id="example_18_input_notes"><h3>Example 18 for lists</h3>
+<p>
+Gkc has basic support for the <i>list datatype</i>. You can use the list
+syntax like <code>[]</code> for the empty list and <code>[a,b,c]</code>
+for a three-element list. The bracket notation is syntactic sugar for
+the constant <code>$nil</code> and functional list-constructing term 
+<code>$list(a,$list(b,$list(c,$nil)))</code>, respectively.
+<p>
+Observe that <code>$list(X0,X1)</code> in the example 
+constucts a list by prepending <code>X0</code> to the list <code>X1</code>,
+which is generally different from a two-element list <code>[X0,X1]</code>.
+<p>
+Terms constructed using <code>$list</code> or <code>$nil</code> are interpreted as having a 
+<i>list type</i>:
+<ul>
+<li>A <i>list type object</i> is inequal to any number or a distinct symbol.
+<li>Syntactically different <i>list type objects</i> A and B are unequal if at any position the corresponding
+elements of A and B are unequal typed values: numbers, lists or distinct symbols.  
+</ul>
+The following predicate and two functions are defined on lists:
+<ul>
+<li><code>$is_list(L)</code>  evaluates to <i>true</i> if A is a list and <i>false</i> is A 
+  is a number or a distinct symbol.
+<li><code>$first(L)</code>  returns the first element of the list.
+<li><code>$rest(L)</code>  returns the rest of the list, i.e. the result of removing the first element.
+</ul>
+These functions can be applied to non-list arguments, where they are left as is and not 
+evaluated.
+<p>
+Observe that since gkc does not contain a theory of arithmetic, lists or strings,
+an example formula <code>? X: $is_list(X)</code> is not provable
+unless you specifically axiomatize list generation.
+<p>
+The current example defines functions for counting the length of the list and summing
+the numeric elements. Then it uses these functions in a rule for deriving a <code>goodcompany</code> 
+type as an object with at least three customers and revenues over 100. Finally we ask to find an
+object with the <code>goodcompany</code> type.
+</p>
+</div>
+<pre>
+<code id="example_18_input_code">clients(company1,[a]).
+revenues(company1,[100,20,50,60]).
+clients(company2,[a,b,c]).
+revenues(company2,[10,20,50,60]).
+listcount([])=0.
+listcount($list(X0,X1))=listcount(X1)+1.
+listsum([])=0.
+listsum($list(X0,X1))=listsum(X1)+X0.
+(clients(X0,X1) & revenues(X0,X2) & $greater(listcount(X1),2) & $greater(listsum(X2),100)) => type(X0,goodcompany).
+type(X0,goodcompany) =>  $ans(X0).</code>
+</pre>
+<div id="example_18_proof_notes">
+</div>
+
+
+<div id="example_19_input_notes"><h3>Example 19 for distinct symbols</h3>
+<p>
+Gkc follows the TPTP syntax of using <i>double quotes</i> like in <code>"person"</code>
+for <i>distinct symbols</i>
+which can be viewed as a <i>string type</i>. A distinct symbol is not equal to any 
+other syntactically different symbol and not equal to any numbers or lists.
+</p>
+<p>
+Gkc defines a function and three predicates on distinct symbols:
+<ul>  
+<li><code>$strlen(S)</code> returns the integer length of a distinct symbol S as a string.
+<li><code>$substr(A,B)</code> evaluates to <i>true</i> if a distinct symbol A is a substring of a distinct symbol B, 
+     and <i>false</i> otherwise, provided that A and B are distinct symbols.  
+<li><code>$substrat(A,B,C)</code> evaluates to <i>true</i> if a distinct symbol A is a substring of a 
+     distinct symbol B exactly at the integer position C (starting from 0), and <i>false</i> otherwise,
+     provided that A and B are distinct symbols and C is an integer.  
+<li><code>$is_distinct(A)</code> evaluates to <i>true</i> if A is a distinct symbol and 
+  <i>false</i> if A is a number or a list.  
+</ul>  
+<p>
+In the current example of using distinct symbols we define a rule saying that whenever sets of type values
+of two objects contain different distinct elements, these objects must be different. Notice that ordinary
+symbols <code>smith1</code> and <code>smith2</code> could be equal or unequal: syntactic difference of ordinary symbols does not
+guarantee that they stand for different objects.
+
+</div>
+  <pre>
+  <code id="example_19_input_code">type(smith1,"person").
+type(smith1,baby).
+type(smith1,'John Smith').
+type(smith2,"dog").
+type(smith2,newborn).
+type(smith2,name,'John Smith').
+(type(X0,X2) & type(X1,X3) & X2!=X3) => X0!=X1.
+smith1=smith2.</code>
+  </pre>
+  <div id="example_19_proof_notes">
+Finding this last proof is, in a sense, nontrivial. Since gkc does not specify any axioms 
+for distinct symbols, by default there are also no inequality axioms between distinct symbols
+like <code>"person"!="dog"</code>. Finding a proof without these axioms requires that the
+search strategy happens to generate evaluable literals like <code>"person"="dog"</code> in 
+derived clauses. This may actually happen for some search strategies, but not for others.
+  </div>  
+
+
+<div id="example_20_input_notes"><h3>Example 20 from natural language</h3>
+  This is a nice relatively simple TPTP example from natural language 
+  processing area: eliminating inconsistent interpretations in the statement
+  "An old dirty white chevy barrels down a lonely street in
+  hollywood. Two young fellas are in the front seat."
+  <p>
+  </div>
+  <pre>
+  <code id="example_20_input_code">% File     : NLP147+1 : TPTP v7.4.0. Released v2.4.0.
+% Domain   : Natural Language Processing
+% Problem  : An old dirty white Chevy, problem 34
+% Version  : [Bos00b] axioms.
+% English  : Eliminating inconsistent interpretations in the statement
+%            "An old dirty white chevy barrels down a lonely street in
+%            hollywood. Two young fellas are in the front seat."
+% Refs     : [Bos00a] Bos (2000), DORIS: Discourse Oriented Representation a
+%            [Bos00b] Bos (2000), Applied Theorem Proving - Natural Language
+% Source   : [Bos00b]
+
+fof(ax1,axiom,
+    ( ! [U,V] :
+        ( furniture(U,V)
+        => instrumentality(U,V) ) )).
+
+fof(ax2,axiom,
+    ( ! [U,V] :
+        ( seat(U,V)
+        => furniture(U,V) ) )).
+
+fof(ax3,axiom,
+    ( ! [U,V] :
+        ( frontseat(U,V)
+        => seat(U,V) ) )).
+
+fof(ax4,axiom,
+    ( ! [U,V] :
+        ( location(U,V)
+        => object(U,V) ) )).
+
+fof(ax5,axiom,
+    ( ! [U,V] :
+        ( city(U,V)
+        => location(U,V) ) )).
+
+fof(ax6,axiom,
+    ( ! [U,V] :
+        ( hollywood_placename(U,V)
+        => placename(U,V) ) )).
+
+fof(ax7,axiom,
+    ( ! [U,V] :
+        ( abstraction(U,V)
+        => unisex(U,V) ) )).
+
+fof(ax8,axiom,
+    ( ! [U,V] :
+        ( abstraction(U,V)
+        => general(U,V) ) )).
+
+fof(ax9,axiom,
+    ( ! [U,V] :
+        ( abstraction(U,V)
+        => nonhuman(U,V) ) )).
+
+fof(ax10,axiom,
+    ( ! [U,V] :
+        ( abstraction(U,V)
+        => thing(U,V) ) )).
+
+fof(ax11,axiom,
+    ( ! [U,V] :
+        ( relation(U,V)
+        => abstraction(U,V) ) )).
+
+fof(ax12,axiom,
+    ( ! [U,V] :
+        ( relname(U,V)
+        => relation(U,V) ) )).
+
+fof(ax13,axiom,
+    ( ! [U,V] :
+        ( placename(U,V)
+        => relname(U,V) ) )).
+
+fof(ax14,axiom,
+    ( ! [U,V] :
+        ( way(U,V)
+        => artifact(U,V) ) )).
+
+fof(ax15,axiom,
+    ( ! [U,V] :
+        ( street(U,V)
+        => way(U,V) ) )).
+
+fof(ax16,axiom,
+    ( ! [U,V] :
+        ( object(U,V)
+        => unisex(U,V) ) )).
+
+fof(ax17,axiom,
+    ( ! [U,V] :
+        ( object(U,V)
+        => impartial(U,V) ) )).
+
+fof(ax18,axiom,
+    ( ! [U,V] :
+        ( object(U,V)
+        => nonliving(U,V) ) )).
+
+fof(ax19,axiom,
+    ( ! [U,V] :
+        ( object(U,V)
+        => entity(U,V) ) )).
+
+fof(ax20,axiom,
+    ( ! [U,V] :
+        ( artifact(U,V)
+        => object(U,V) ) )).
+
+fof(ax21,axiom,
+    ( ! [U,V] :
+        ( instrumentality(U,V)
+        => artifact(U,V) ) )).
+
+fof(ax22,axiom,
+    ( ! [U,V] :
+        ( transport(U,V)
+        => instrumentality(U,V) ) )).
+
+fof(ax23,axiom,
+    ( ! [U,V] :
+        ( vehicle(U,V)
+        => transport(U,V) ) )).
+
+fof(ax24,axiom,
+    ( ! [U,V] :
+        ( car(U,V)
+        => vehicle(U,V) ) )).
+
+fof(ax25,axiom,
+    ( ! [U,V] :
+        ( chevy(U,V)
+        => car(U,V) ) )).
+
+fof(ax26,axiom,
+    ( ! [U,V] :
+        ( barrel(U,V)
+        => event(U,V) ) )).
+
+fof(ax27,axiom,
+    ( ! [U,V] :
+        ( event(U,V)
+        => eventuality(U,V) ) )).
+
+fof(ax28,axiom,
+    ( ! [U,V] :
+        ( state(U,V)
+        => event(U,V) ) )).
+
+fof(ax29,axiom,
+    ( ! [U,V] :
+        ( eventuality(U,V)
+        => unisex(U,V) ) )).
+
+fof(ax30,axiom,
+    ( ! [U,V] :
+        ( eventuality(U,V)
+        => nonexistent(U,V) ) )).
+
+fof(ax31,axiom,
+    ( ! [U,V] :
+        ( eventuality(U,V)
+        => specific(U,V) ) )).
+
+fof(ax32,axiom,
+    ( ! [U,V] :
+        ( eventuality(U,V)
+        => thing(U,V) ) )).
+
+fof(ax33,axiom,
+    ( ! [U,V] :
+        ( state(U,V)
+        => eventuality(U,V) ) )).
+
+fof(ax34,axiom,
+    ( ! [U,V] :
+        ( two(U,V)
+        => group(U,V) ) )).
+
+fof(ax35,axiom,
+    ( ! [U,V] :
+        ( set(U,V)
+        => multiple(U,V) ) )).
+
+fof(ax36,axiom,
+    ( ! [U,V] :
+        ( group(U,V)
+        => set(U,V) ) )).
+
+fof(ax37,axiom,
+    ( ! [U,V] :
+        ( man(U,V)
+        => male(U,V) ) )).
+
+fof(ax38,axiom,
+    ( ! [U,V] :
+        ( human_person(U,V)
+        => animate(U,V) ) )).
+
+fof(ax39,axiom,
+    ( ! [U,V] :
+        ( human_person(U,V)
+        => human(U,V) ) )).
+
+fof(ax40,axiom,
+    ( ! [U,V] :
+        ( organism(U,V)
+        => living(U,V) ) )).
+
+fof(ax41,axiom,
+    ( ! [U,V] :
+        ( organism(U,V)
+        => impartial(U,V) ) )).
+
+fof(ax42,axiom,
+    ( ! [U,V] :
+        ( entity(U,V)
+        => existent(U,V) ) )).
+
+fof(ax43,axiom,
+    ( ! [U,V] :
+        ( entity(U,V)
+        => specific(U,V) ) )).
+
+fof(ax44,axiom,
+    ( ! [U,V] :
+        ( thing(U,V)
+        => singleton(U,V) ) )).
+
+fof(ax45,axiom,
+    ( ! [U,V] :
+        ( entity(U,V)
+        => thing(U,V) ) )).
+
+fof(ax46,axiom,
+    ( ! [U,V] :
+        ( organism(U,V)
+        => entity(U,V) ) )).
+
+fof(ax47,axiom,
+    ( ! [U,V] :
+        ( human_person(U,V)
+        => organism(U,V) ) )).
+
+fof(ax48,axiom,
+    ( ! [U,V] :
+        ( man(U,V)
+        => human_person(U,V) ) )).
+
+fof(ax49,axiom,
+    ( ! [U,V] :
+        ( fellow(U,V)
+        => man(U,V) ) )).
+
+fof(ax50,axiom,
+    ( ! [U,V] :
+        ( animate(U,V)
+        => ~ nonliving(U,V) ) )).
+
+fof(ax51,axiom,
+    ( ! [U,V] :
+        ( existent(U,V)
+        => ~ nonexistent(U,V) ) )).
+
+fof(ax52,axiom,
+    ( ! [U,V] :
+        ( nonhuman(U,V)
+        => ~ human(U,V) ) )).
+
+fof(ax53,axiom,
+    ( ! [U,V] :
+        ( nonliving(U,V)
+        => ~ living(U,V) ) )).
+
+fof(ax54,axiom,
+    ( ! [U,V] :
+        ( singleton(U,V)
+        => ~ multiple(U,V) ) )).
+
+fof(ax55,axiom,
+    ( ! [U,V] :
+        ( specific(U,V)
+        => ~ general(U,V) ) )).
+
+fof(ax56,axiom,
+    ( ! [U,V] :
+        ( unisex(U,V)
+        => ~ male(U,V) ) )).
+
+fof(ax57,axiom,
+    ( ! [U,V] :
+        ( young(U,V)
+        => ~ old(U,V) ) )).
+
+fof(ax58,axiom,
+    ( ! [U,V,W] :
+        ( ( entity(U,V)
+          & placename(U,W)
+          & of(U,W,V) )
+        => ~ ( ? [X] :
+                ( placename(U,X)
+                & X != W
+                & of(U,X,V) ) ) ) )).
+
+fof(ax59,axiom,
+    ( ! [U,V,W,X] :
+        ( be(U,V,W,X)
+        => W = X ) )).
+
+fof(ax60,axiom,
+    ( ! [U,V] :
+        ( two(U,V)
+      <=> ? [W] :
+            ( member(U,W,V)
+            & ? [X] :
+                ( member(U,X,V)
+                & X != W
+                & ! [Y] :
+                    ( member(U,Y,V)
+                    => ( Y = X
+                      | Y = W ) ) ) ) ) )).
+
+fof(ax61,axiom,
+    ( ! [U] : ~ ( ? [V] : member(U,V,V) ) )).
+
+fof(co1,conjecture,
+    ( ~ ( ? [U] :
+            ( actual_world(U)
+            & ? [V,W,X,Y,Z] :
+                ( street(U,V)
+                & lonely(U,V)
+                & of(U,W,X)
+                & city(U,X)
+                & hollywood_placename(U,W)
+                & placename(U,W)
+                & chevy(U,X)
+                & white(U,X)
+                & dirty(U,X)
+                & old(U,X)
+                & event(U,Y)
+                & agent(U,Y,X)
+                & present(U,Y)
+                & barrel(U,Y)
+                & down(U,Y,V)
+                & in(U,Y,X)
+                & ! [X1] :
+                    ( member(U,X1,Z)
+                    => ? [X2,X3] :
+                        ( frontseat(U,X3)
+                        & state(U,X2)
+                        & be(U,X2,X1,X3)
+                        & in(U,X3,X3) ) )
+                & two(U,Z)
+                & group(U,Z)
+                & ! [X4] :
+                    ( member(U,X4,Z)
+                    => ( fellow(U,X4)
+                      & young(U,X4) ) ) ) ) ) )).
+</code></pre>      
+<div id="example_20_proof_notes"></div>
+
+<div id="example_21_input_notes"><h3>Example 21 from organization theory</h3>
+A TPTP example from organization theory: the 
+long-run hazard of mortality for an endowed organization with
+either a fragile or a robust position in a drifting environment
+exceeds the hazard near founding.
+<p>
+</div>
+<pre>
+<code id="example_21_input_code">% File     : MGT065+1 : TPTP v7.3.0. Released v2.4.0.
+% Domain   : Management (Organisation Theory)
+% Problem  : Long-run hazard of mortality
+% Version  : [Han98] axioms.
+% English  : The long-run hazard of mortality for an endowed organization with
+%            either a fragile or a robust position in a drifting environment
+%            exceeds the hazard near founding.
+% Refs     : [Kam00] Kamps (2000), Email to G. Sutcliffe
+%            [CH00]  Carroll & Hannan (2000), The Demography of Corporation
+%            [Han98] Hannan (1998), Rethinking Age Dependence in Organizati
+
+% --- Axioms ---
+
+fof(meaning_postulate_greater_transitive,axiom,(
+    ! [X,Y,Z] :
+      ( greater(X,Z)
+      <= ( greater(Y,Z)
+        & greater(X,Y) ) ) )).
+
+fof(definition_smaller,axiom,(
+    ! [X,Y] :
+      ( greater(Y,X)
+    <=> smaller(X,Y) ) )).
+
+fof(meaning_postulate_greater_strict,axiom,(
+    ! [X,Y] :
+      ~ ( greater(X,Y)
+        & greater(Y,X) ) )).
+
+fof(definition_greater_or_equal,axiom,(
+    ! [X,Y] :
+      ( ( greater(X,Y)
+        | X = Y )
+    <=> greater_or_equal(X,Y) ) )).
+
+fof(definition_smaller_or_equal,axiom,(
+    ! [X,Y] :
+      ( smaller_or_equal(X,Y)
+    <=> ( Y = X
+        | smaller(X,Y) ) ) )).
+
+fof(meaning_postulate_greater_comparable,axiom,(
+    ! [X,Y] :
+      ( X = Y
+      | greater(X,Y)
+      | smaller(X,Y) ) )).
+
+% --- Problem ---
+
+%----Problem Axioms
+%----An endowment provides an immunity that lasts until an
+%----organization's age exceeds `eta'.
+fof(definition_1,axiom,
+    ( ! [X] :
+        ( has_endowment(X)
+      <=> ! [T] :
+            ( organization(X)
+            & ( smaller_or_equal(age(X,T),eta)
+              => has_immunity(X,T) )
+            & ( greater(age(X,T),eta)
+              => ~ has_immunity(X,T) ) ) ) )).
+
+%----Two states of the environment are dissimilar for an organization
+%----if and only if the organization cannot be aligned to both.
+%----
+%----Added quantification over X.
+fof(definition_2,axiom,
+    ( ! [X,T0,T] :
+        ( dissimilar(X,T0,T)
+      <=> ( organization(X)
+          & ~ ( is_aligned(X,T0)
+            <=> is_aligned(X,T) ) ) ) )).
+
+%----An organization is aligned with the state of the environment at
+%----its time of founding.
+fof(assumption_13,axiom,
+    ( ! [X,T] :
+        ( ( organization(X)
+          & age(X,T) = zero )
+        => is_aligned(X,T) ) )).
+
+%----Environmental drift: the environments at times separated by more
+%----than `sigma' are dissimilar.
+fof(assumption_15,axiom,
+    ( ! [X,T0,T] :
+        ( ( organization(X)
+          & age(X,T0) = zero )
+        => ( greater(age(X,T),sigma)
+        <=> dissimilar(X,T0,T) ) ) )).
+        
+%----An organization's immunity. alignment of capability with the
+%----current state of the environment and positional advantage jointly
+%----affect the hazard of mortality with the following ordinal scaling:
+fof(assumption_17,axiom,
+    ( ! [X,T] :
+        ( organization(X)
+        => ( ( has_immunity(X,T)
+            => hazard_of_mortality(X,T) = very_low )
+          & ( ~ has_immunity(X,T)
+            => ( ( ( is_aligned(X,T)
+                  & positional_advantage(X,T) )
+                => hazard_of_mortality(X,T) = low )
+              & ( ( ~ is_aligned(X,T)
+                  & positional_advantage(X,T) )
+                => hazard_of_mortality(X,T) = mod1 )
+              & ( ( is_aligned(X,T)
+                  & ~ positional_advantage(X,T) )
+                => hazard_of_mortality(X,T) = mod2 )
+              & ( ( ~ is_aligned(X,T)
+                  & ~ positional_advantage(X,T) )
+                => hazard_of_mortality(X,T) = high ) ) ) ) ) )).
+
+%----The levels of hazard of mortality are ordered:
+%----
+%----Split over 5 separate formulas because TPTP gives an error on top
+%----level occurrences of `&'.
+fof(assumption_18a,axiom,
+    ( greater(high,mod1) )).
+
+fof(assumption_18b,axiom,
+    ( greater(mod1,low) )).
+
+fof(assumption_18c,axiom,
+    ( greater(low,very_low) )).
+
+fof(assumption_18d,axiom,
+    ( greater(high,mod2) )).
+
+fof(assumption_18e,axiom,
+    ( greater(mod2,low) )).
+
+%----Problem theorems
+%----The long-run hazard of mortality for an endowed organization with
+%----either a fragile or a robust position in a drifting environment
+%----exceeds the hazard near founding.
+%----From D1, D2, A13, A15, A17, A18 (text says D1,2,4 and A1,2,13-15,17-19;
+%----also needs D<, D<=, MP>str, MP>com, MP>tra).
+%----
+%----Expanding (age(X,T1) <= min(eta,sigma,tau)) and
+%----expanding (age(X,T1) > max(eta,sigma,tau));
+%----Text says RB(x) & FG(x) which contradicts lemma 10; changed to |.
+%----added (hazard_of_mortality(X,T1) = hazard_of_mortality(X,T0)).
+
+fof(theorem_11,conjecture,
+    ( ! [X,T0,T1,T2] :
+        ( ( organization(X)
+          & ( robust_position(X)
+            | fragile_position(X) )
+          & has_endowment(X)
+          & age(X,T0) = zero
+          & greater(sigma,zero)
+          & greater(tau,zero)
+          & greater(eta,zero)
+          & smaller_or_equal(age(X,T1),sigma)
+          & smaller_or_equal(age(X,T1),tau)
+          & smaller_or_equal(age(X,T1),eta)
+          & greater(age(X,T2),sigma)
+          & greater(age(X,T2),tau)
+          & greater(age(X,T2),eta) )
+        => ( greater(hazard_of_mortality(X,T2),hazard_of_mortality(X,T1))
+          & hazard_of_mortality(X,T1) = hazard_of_mortality(X,T0) ) ) )).
+</code>
+</pre>
+<div id="example_21_proof_notes"></div>
+
+
+<div id="example_22_input_notes"><h3>Example 22 from boolean algebra</h3>
+  <p>
+  An pure equational example from the TPTP Boolean Algebra domain:
+  a part of a proof that there exists an independent self-dual
+  2-basis for Boolean Algebra.  
+  <p>
+  You may need to increase the time limit in the <i>Seconds</i> box
+  to find the proof.  
+  <p>
+  </div>
+  <pre>
+  <code id="example_22_input_code">% File     : BOO026-1 : TPTP v7.4.0. Released v2.2.0.
+% Domain   : Boolean Algebra
+% Problem  : Absorption from self-dual independent 2-basis
+% Version  : [MP96] (eqiality) axioms : Especial.
+% English  : This is part of a proof that there exists an independent self-dual
+%            2-basis for Boolean Algebra.  You may note that the basis
+%            below has more than 2 equations; but don't worry, it can be
+%            reduced to 2 (large) equations by Pixley reduction.
+% Refs     : [Wos98] Wos (1998), Automating the Search for Elegant Proofs
+%          : [McC98] McCune (1998), Email to G. Sutcliffe
+%          : [MP96]  McCune & Padmanabhan (1996), Automated Deduction in Eq
+% Source   : [McC98]
+% Names    : DUAL-BA-3 [MP96]
+%          : DUAL-BA-3 [Wos98]
+
+%----Two Boolean algebra properties and their duals:
+cnf(multiply_add_property,axiom,
+    ( multiply(X,add(Y,Z)) = add(multiply(Y,X),multiply(Z,X)) )).
+
+cnf(additive_inverse,axiom,
+    ( add(X,inverse(X)) = n1 )).
+
+cnf(add_multiply_property,axiom,
+    ( add(X,multiply(Y,Z)) = multiply(add(Y,X),add(Z,X)) )).
+
+cnf(multiplicative_inverse,axiom,
+    ( multiply(X,inverse(X)) = n0 )).
+
+%----Expanded Pixley properties and their duals:
+cnf(pixley1,axiom,
+    ( add(multiply(X,inverse(X)),add(multiply(X,Y),multiply(inverse(X),Y))) = Y )).
+
+cnf(pixley2,axiom,
+    ( add(multiply(X,inverse(Y)),add(multiply(X,Y),multiply(inverse(Y),Y))) = X )).
+
+cnf(pixley3,axiom,
+    ( add(multiply(X,inverse(Y)),add(multiply(X,X),multiply(inverse(Y),X))) = X )).
+
+cnf(pixley1_dual,axiom,
+    ( multiply(add(X,inverse(X)),multiply(add(X,Y),add(inverse(X),Y))) = Y )).
+
+cnf(pixley2_dual,axiom,
+    ( multiply(add(X,inverse(Y)),multiply(add(X,Y),add(inverse(Y),Y))) = X )).
+
+cnf(pixley3_dual,axiom,
+    ( multiply(add(X,inverse(Y)),multiply(add(X,X),add(inverse(Y),X))) = X )).
+
+%----Denial of the conclusion:
+cnf(prove_multiply_add,negated_conjecture,
+    (  multiply(add(a,b),b) != b )).
+</code></pre>      
+<div id="example_22_proof_notes"></div>
+
+
+
+
+<div id="example_23_input_notes"><h3>Example 23 from medicine</h3>
+<p>  
+An example from the TPTP medicine domain:
+whether or not patients with subnormal production of glucose in
+the B-cells and a low QI index are cured with sulfonylurea.
+  <p>
+  </div>
+  <pre>
+  <code id="example_23_input_code">% File     : MED001+1 : TPTP v7.3.0. Released v3.2.0.
+% Domain   : Medicine
+% Problem  : Sulfonylurea treatment
+% Version  : [HLB05] axioms : Especial.
+% English  : Whether or not patients with subnormal production of glucose in
+%            the B-cells and a low QI index are cured with sulfonylurea.
+% Refs     : [HLB05] Hommersom et al. (2005), Automated Theorem Proving for
+%          : [Hom06] Hommersom (2006), Email to G. Sutcliffe
+% Source   : [Hom06]
+% Names    :  
+%------------------------------------------------------------------------------
+%include('Axioms/MED001+0.ax').
+
+fof(sn_cure_2,axiom,(
+  ! [X0] :
+    ( ! [X1] :
+        ( conditionnormo(X1)
+        <= ~ gt(X0,X1) )
+    <= ( ! [X1] :
+          ( conditionhyper(X1)
+          <= gt(X0,X1) )
+      & ~ qilt27(X0)
+      & bcapacitysn(X0)
+      & ! [X1] :
+          ( ~ gt(X0,X1)
+          => ~ releaselg(X1) ) ) ) )).
+
+fof(xorcapacity1,axiom,(
+    ! [X0] :
+      ( bcapacityne(X0)
+      | bcapacityex(X0)
+      | bcapacitysn(X0) ) )).
+
+fof(xorcapacity4,axiom,(
+    ! [X0] :
+      ( ~ bcapacitysn(X0)
+      | ~ bcapacityex(X0) ) )).
+
+fof(sulfonylurea_effect,axiom,(
+    ! [X0] :
+      ( ( ~ bcapacityex(X0)
+        & ! [X1] :
+            ( ~ gt(X0,X1)
+          => drugsu(X1) ) )
+    => ! [X1] :
+          ( bsecretioni(X1)
+        <= ~ gt(X0,X1) ) ) )).
+
+fof(transitivity_gt,axiom,(
+    ! [X,Y,Z] :
+      ( gt(X,Z)
+    <= ( gt(Y,Z)
+        & gt(X,Y) ) ) )).
+
+fof(liver_glucose,axiom,(
+    ! [X0,X1] :
+      ( ( uptakelg(X1)
+      => ~ releaselg(X1) )
+    <= ~ gt(X0,X1) ) )).
+
+fof(irreflexivity_gt,axiom,(
+    ! [X] : ~ gt(X,X) )).
+
+fof(insulin_effect,axiom,(
+    ! [X0] :
+      ( ! [X1] :
+          ( ~ gt(X0,X1)
+        => drugi(X1) )
+    => ! [X1] :
+          ( ~ gt(X0,X1)
+        => ( uptakepg(X1)
+            & uptakelg(X1) ) ) ) )).
+
+fof(xorcondition2,axiom,(
+    ! [X0] :
+      ( ~ conditionhyper(X0)
+      | ~ conditionhypo(X0) ) )).
+
+fof(sn_cure_1,axiom,(
+    ! [X0] :
+      ( ! [X1] :
+          ( conditionnormo(X1)
+        <= ~ gt(X0,X1) )
+    <= ( ! [X1] :
+            ( bsecretioni(X1)
+          <= ~ gt(X0,X1) )
+        & bcapacitysn(X0)
+        & ! [X1] :
+            ( gt(X0,X1)
+          => conditionhyper(X1) )
+        & qilt27(X0) ) ) )).
+
+fof(xorcondition4,axiom,(
+    ! [X0] :
+      ( ~ conditionnormo(X0)
+      | ~ conditionhypo(X0) ) )).
+
+fof(xorcapacity3,axiom,(
+    ! [X0] :
+      ( ~ bcapacitysn(X0)
+      | ~ bcapacityne(X0) ) )).
+
+fof(xorcondition3,axiom,(
+    ! [X0] :
+      ( ~ conditionhyper(X0)
+      | ~ conditionnormo(X0) ) )).
+
+fof(biguanide_effect,axiom,(
+    ! [X0] :
+      ( ! [X1] :
+          ( ~ gt(X0,X1)
+        => ~ releaselg(X1) )
+    <= ! [X1] :
+          ( ~ gt(X0,X1)
+        => drugbg(X1) ) ) )).
+
+fof(ne_cure,axiom,(
+    ! [X0] :
+      ( ( ( ! [X1] :
+              ( uptakepg(X1)
+            <= ~ gt(X0,X1) )
+          | ! [X1] :
+              ( ~ releaselg(X1)
+            <= ~ gt(X0,X1) ) )
+        & ! [X1] :
+            ( ~ gt(X0,X1)
+          => bsecretioni(X1) )
+        & ! [X1] :
+            ( conditionhyper(X1)
+          <= gt(X0,X1) )
+        & bcapacityne(X0) )
+    => ! [X1] :
+          ( ~ gt(X0,X1)
+        => conditionnormo(X1) ) ) )).
+
+fof(ex_cure,axiom,(
+    ! [X0] :
+      ( ! [X1] :
+          ( ~ gt(X0,X1)
+        => ( conditionnormo(X1)
+            | conditionhypo(X1) ) )
+    <= ( ! [X1] :
+            ( ~ gt(X0,X1)
+          => uptakepg(X1) )
+        & bcapacityex(X0)
+        & ! [X1] :
+            ( conditionhyper(X1)
+          <= gt(X0,X1) )
+        & ! [X1] :
+            ( uptakelg(X1)
+          <= ~ gt(X0,X1) ) ) ) )).
+
+fof(xorcondition1,axiom,(
+    ! [X0] :
+      ( conditionhypo(X0)
+      | conditionnormo(X0)
+      | conditionhyper(X0) ) )).
+
+fof(xorcapacity2,axiom,(
+    ! [X0] :
+      ( ~ bcapacityex(X0)
+      | ~ bcapacityne(X0) ) )).
+
+%------------------------------------------------------------------------------
+
+fof(treatmentsn2,conjecture,
+    ( ( ! [X0] :
+          ( ~ gt(n0,X0)
+          => drugsu(X0) )
+      & ! [X0] :
+          ( gt(n0,X0)
+          => conditionhyper(X0) )
+      & bcapacitysn(n0)
+      & qilt27(n0) )
+    => ! [X0] :
+        ( ~ gt(n0,X0)
+        => conditionnormo(X0) ) )).          
+</code></pre>      
+<div id="example_23_proof_notes"></div>
+
+
+<div id="example_24_input_notes"><h3>Example 24: Dreadbury Mansion</h3>
+An example from the TPTP puzzle domain:
+"Someone who lives in DreadburyMansion kills AuntAgatha. If 
+somebody X lives in DreadburyMansion then X is AuntAgatha or X
+is the Butler or X is Charles. Everyone hates everyone that he
+kills. Noone is richer than someone that he kills. Charles hates
+noone who is hated by AuntAgatha. AuntAgatha does not hate the
+Butler. Everyone that is not the Butler is hated by AuntAgatha.
+The Butler hates everyone who is not richer than AuntAgatha. The
+Butler hates everyone who is hated by AuntAgatha. Noone hates
+everyone. AuntAgatha is not the Butler. Therefore, AuntAgatha
+kills AuntAgatha"  
+</div>
+<pre>
+<code id="example_24_input_code">% File     : PUZ001+2 : TPTP v7.4.0. Released v4.0.0.
+% Domain   : Puzzles
+% Problem  : Dreadbury Mansion
+% Version  : Especial.
+%            Theorem formulation : Converted from ACE by the APE [FKK08].
+% English  : Someone who lives in DreadburyMansion kills AuntAgatha. If 
+%            somebody X lives in DreadburyMansion then X is AuntAgatha or X
+%            is the Butler or X is Charles. Everyone hates everyone that he
+%            kills. Noone is richer than someone that he kills. Charles hates
+%            noone who is hated by AuntAgatha. AuntAgatha does not hate the
+%            Butler. Everyone that is not the Butler is hated by AuntAgatha.
+%            The Butler hates everyone who is not richer than AuntAgatha. The
+%            Butler hates everyone who is hated by AuntAgatha. Noone hates
+%            everyone. AuntAgatha is not the Butler. Therefore, AuntAgatha
+%            kills AuntAgatha.
+% Refs     : [FKK08] Fuchs et al. (2008), Attempto Controlled English for K
+% Source   : [TPTP]
+
+fof(background,axiom,(
+    ? [A,B,C] :
+      ( $true
+      & predicate1(B,live,A)
+      & modifier_pp(B,in,'DreadburyMansion')
+      & predicate2(C,kill,A,'AuntAgatha')
+      & ! [D,E] :
+          ( ( $true
+            & predicate1(E,live,D)
+            & modifier_pp(E,in,'DreadburyMansion') )
+          => ( D = 'AuntAgatha'
+            | D = 'Butler'
+            | D = 'Charles' ) )
+      & ! [F] :
+          ( $true
+          => ! [G,H] :
+              ( ( $true
+                & predicate2(H,kill,F,G) )
+              => ? [I] : predicate2(I,hate,F,G) ) )
+      & ! [J] :
+          ( $true
+          => ~ ? [K,L,M] :
+                ( $true
+                & predicate2(L,kill,J,K)
+                & property2(M,rich,comp_than,K)
+                & J = M ) )
+      & ! [N,O] :
+          ( ( $true
+            & predicate2(O,hate,'AuntAgatha',N) )
+          => ~ ? [P] : predicate2(P,hate,'Charles',N) )
+      & ~ ? [Q] : predicate2(Q,hate,'AuntAgatha','Butler')
+      & ! [R] :
+          ( ( $true
+            & R != 'Butler' )
+          => ? [S] : predicate2(S,hate,'AuntAgatha',R) )
+      & ! [T] :
+          ( ( $true
+            & ~ ? [U] :
+                  ( property2(U,rich,comp_than,'AuntAgatha')
+                  & T = U ) )
+          => ? [V] : predicate2(V,hate,'Butler',T) )
+      & ! [W,X] :
+          ( ( $true
+            & predicate2(X,hate,'AuntAgatha',W) )
+          => ? [Y] : predicate2(Y,hate,'Butler',W) )
+      & ! [Z] :
+          ( $true
+          => ~ ! [A1] :
+                ( $true
+                => ? [B1] : predicate2(B1,hate,Z,A1) ) )
+      & 'AuntAgatha' != 'Butler' ) )).
+
+fof(prove,conjecture,(
+    ? [A] : predicate2(A,kill,'AuntAgatha','AuntAgatha') )).  
+</code></pre>      
+<div id="example_24_proof_notes"></div>
+
+
+<div id="example_25_input_notes"><h3>Example 25 from group theory</h3>
+<p>  
+A tiny, yet nontrivial pure equational example from the TPTP group theory domain:
+axiom for group theory, in product and inverse, part 1.
+<p>
+You may need to increase the time limit in the <i>Seconds</i> box to find
+a proof. 
+<p>
+The lines in the proof will be rather long.
+  <p>
+  </div>
+  <pre>
+  <code id="example_25_input_code">% File     : GRP436-1 : TPTP v7.4.0. Released v2.6.0.
+% Domain   : Group Theory
+% Problem  : Axiom for group theory, in product & inverse, part 1
+% Refs     : [McC93] McCune (1993), Single Axioms for Groups and Abelian Gr
+
+cnf(single_axiom,axiom,
+    ( multiply(A,inverse(multiply(B,multiply(C,multiply(multiply(inverse(C),inverse(multiply(D,B))),A))))) = D )).
+cnf(prove_these_axioms_1,negated_conjecture,
+    (  multiply(inverse(a1),a1) != multiply(inverse(b1),b1) )).</code></pre>      
+<div id="example_25_proof_notes"></div>
+
+
+<div id="example_26_input_notes"><h3>Example 26 from set theory</h3>
+  <p>  
+  A pure clausal example from the TPTP set theory domain:
+  X \ Y ^ Z = (X \ Y) U (X \ Z). 
+    <p>
+    </div>
+    <pre>
+    <code id="example_26_input_code">% File     : SET010-1 : TPTP v7.3.0. Released v1.0.0.
+% Domain   : Set Theory
+% Problem  : X \ Y ^ Z = (X \ Y) U (X \ Z)
+% Version  : [LS74] axioms.
+% English  :
+
+% Refs     : [LS74]  Lawrence & Starkey (1974), Experimental Tests of Resol
+%          : [WM76]  Wilson & Minker (1976), Resolution, Refinements, and S
+% Source   : [SPRFN]
+% Names    : ls118 [LS74]
+%          : ls118 [WM76]
+
+%----Include the member and subset axioms
+%include('Axioms/SET001-0.ax').
+
+cnf(subsets_are_set_equal_sets,axiom,
+    ( ~ subset(Set1,Set2)
+    | ~ subset(Set2,Set1)
+    | equal_sets(Set2,Set1) )).
+
+cnf(set_equal_sets_are_subsets2,axiom,
+    ( subset(Subset,Superset)
+    | ~ equal_sets(Superset,Subset) )).
+
+cnf(membership_in_subsets,axiom,
+    ( ~ subset(Subset,Superset)
+    | member(Element,Superset)
+    | ~ member(Element,Subset) )).
+
+cnf(set_equal_sets_are_subsets1,axiom,
+    ( subset(Subset,Superset)
+    | ~ equal_sets(Subset,Superset) )).
+
+cnf(subsets_axiom2,axiom,
+    ( subset(Subset,Superset)
+    | ~ member(member_of_1_not_of_2(Subset,Superset),Superset) )).
+
+cnf(subsets_axiom1,axiom,
+    ( member(member_of_1_not_of_2(Subset,Superset),Subset)
+    | subset(Subset,Superset) )).
+    
+%----Include the member and union axioms
+%include('Axioms/SET001-1.ax').
+
+cnf(member_of_union_is_member_of_one_set,axiom,
+    ( ~ member(Element,Union)
+    | member(Element,Set2)
+    | member(Element,Set1)
+    | ~ union(Set1,Set2,Union) )).
+
+cnf(member_of_set1_is_member_of_union,axiom,
+    ( ~ union(Set1,Set2,Union)
+    | ~ member(Element,Set1)
+    | member(Element,Union) )).
+
+cnf(union_axiom2,axiom,
+    ( ~ member(g(Set1,Set2,Union),Union)
+    | union(Set1,Set2,Union)
+    | ~ member(g(Set1,Set2,Union),Set1) )).
+
+cnf(union_axiom3,axiom,
+    ( ~ member(g(Set1,Set2,Union),Set2)
+    | ~ member(g(Set1,Set2,Union),Union)
+    | union(Set1,Set2,Union) )).
+
+cnf(union_axiom1,axiom,
+    ( member(g(Set1,Set2,Union),Set1)
+    | member(g(Set1,Set2,Union),Set2)
+    | member(g(Set1,Set2,Union),Union)
+    | union(Set1,Set2,Union) )).
+
+cnf(member_of_set2_is_member_of_union,axiom,
+    ( ~ member(Element,Set2)
+    | member(Element,Union)
+    | ~ union(Set1,Set2,Union) )).
+    
+%----Include the member and intersection axioms
+%include('Axioms/SET001-2.ax').
+
+cnf(intersection_axiom1,axiom,
+    ( member(h(Set1,Set2,Intersection),Set1)
+    | intersection(Set1,Set2,Intersection)
+    | member(h(Set1,Set2,Intersection),Intersection) )).
+
+cnf(member_of_both_is_member_of_intersection,axiom,
+    ( ~ intersection(Set1,Set2,Intersection)
+    | ~ member(Element,Set2)
+    | ~ member(Element,Set1)
+    | member(Element,Intersection) )).
+
+cnf(member_of_intersection_is_member_of_set2,axiom,
+    ( ~ intersection(Set1,Set2,Intersection)
+    | member(Element,Set2)
+    | ~ member(Element,Intersection) )).
+
+cnf(member_of_intersection_is_member_of_set1,axiom,
+    ( ~ member(Element,Intersection)
+    | member(Element,Set1)
+    | ~ intersection(Set1,Set2,Intersection) )).
+
+cnf(intersection_axiom2,axiom,
+    ( member(h(Set1,Set2,Intersection),Set2)
+    | intersection(Set1,Set2,Intersection)
+    | member(h(Set1,Set2,Intersection),Intersection) )).
+
+cnf(intersection_axiom3,axiom,
+    ( intersection(Set1,Set2,Intersection)
+    | ~ member(h(Set1,Set2,Intersection),Set1)
+    | ~ member(h(Set1,Set2,Intersection),Set2)
+    | ~ member(h(Set1,Set2,Intersection),Intersection) )).
+
+%----Include the member and difference axioms
+% include('Axioms/SET001-3.ax').
+
+cnf(difference_axiom1,axiom,
+    ( difference(Set1,Set2,Difference)
+    | member(k(Set1,Set2,Difference),Difference)
+    | ~ member(k(Set1,Set2,Difference),Set2) )).
+
+cnf(member_of_difference,axiom,
+    ( ~ member(Element,Difference)
+    | member(Element,Set1)
+    | ~ difference(Set1,Set2,Difference) )).
+
+cnf(difference_axiom3,axiom,
+    ( difference(Set1,Set2,Difference)
+    | member(k(Set1,Set2,Difference),Set2)
+    | ~ member(k(Set1,Set2,Difference),Set1)
+    | ~ member(k(Set1,Set2,Difference),Difference) )).
+
+cnf(not_member_of_difference,axiom,
+    ( ~ member(Element,Set2)
+    | ~ difference(A_set,Set1,Set2)
+    | ~ member(Element,Set1) )).
+
+cnf(difference_axiom2,axiom,
+    ( member(k(Set1,Set2,Difference),Difference)
+    | member(k(Set1,Set2,Difference),Set1)
+    | difference(Set1,Set2,Difference) )).
+
+cnf(member_of_difference_or_set2,axiom,
+    ( ~ member(Element,Set1)
+    | member(Element,Set2)
+    | member(Element,Difference)
+    | ~ difference(Set1,Set2,Difference) )).
+
+%--------------------------------------------------------------------------
+cnf(a_intersection_b,hypothesis,
+    ( intersection(a,b,aIb) )).
+
+cnf(c_minus_a,hypothesis,
+    ( difference(c,a,cDa) )).
+
+cnf(c_minus_b,hypothesis,
+    ( difference(c,b,cDb) )).
+
+cnf(c_minus_aIb,hypothesis,
+    ( difference(c,aIb,cD_aIb) )).
+
+cnf(prove_cDa_union_cDb_is_cD_aIb,negated_conjecture,
+    ( ~ union(cDa,cDb,cD_aIb) )).
+    </code></pre>      
+  <div id="example_26_proof_notes"></div>
 
 <!-- at-end-scripts -->
 
 <script>
 // instead of jquery
-
 function gid(x) { return document.getElementById(x); }
-
 // reading a file
-
 function handleFileSelect(evt) {
   var files = evt.target.files; 
   for (var i = 0, f; f = files[i]; i++) {
     var reader = new FileReader();
     reader.onload = (function(theFile) {
-      return function(e) { gid('propinput').value=e.target.result; };
+      return function(e) { gid('gkc_1_input').value=e.target.result; };
     })(f);
     reader.readAsText(f);
   }
 }
-
+// do this to initialize file reading:
 gid('files').addEventListener('change', handleFileSelect, false);
+
 </script>
 <!-- ui with bootstrap -->
 <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
 <script src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/js/bootstrap.min.js"></script>
 <!-- Solver code -->
-<script src="proplog_min.js"></script>
+<script async src="gkcjs.js"></script>
 <!--
-<script src="proplog_ui.js"></script>
-<script src="proplog_parse.js"></script>
-<script src="proplog_convert.js"></script>
-<script src="proplog_generate.js"></script>
-<script src="proplog_dpll.js"></script>
-<script src="proplog_olddpll.js"></script>
-<script src="proplog_naivedpll.js"></script>
-<script src="proplog_searchtable.js"></script>
-<script src="proplog_naiveres.js"></script>
-<script src="proplog_res.js"></script>  
--->  
+<script>
+// google analytics
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-61132529-1', 'auto');
+  ga('send', 'pageview');
+</script> 
+-->
 </body>
 </html>

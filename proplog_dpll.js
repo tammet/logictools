@@ -36,6 +36,7 @@ var trace_flag=false; // false if no trace
 var trace_method="text"; // ok values: text, html or console
 var trace_list=[];  // list of strings 
 var origvars=[]; // original variable names to use in trace, if available and not false
+var purevars=[]; // vars eliminated during preprocessing
 var result_model=[]; // set by solver to a resulting model: values of vars
   
 // statistical counts:
@@ -94,7 +95,7 @@ var varactivities; // array of variable activities for preference, assigned late
 
 exports.dpll = function (clauses,maxvarnr,trace,varnames) {
   var varvals,occvars,posbuckets,negbuckets,derived,tmp;
-  var i,res,txt;
+  var i,j,res,txt,v;
   // store trace and origvars to globals
   if (trace) { trace_flag=true; trace_method=trace; }
   else { trace_flag=false; }
@@ -141,7 +142,8 @@ exports.dpll = function (clauses,maxvarnr,trace,varnames) {
     return [false,trace_list.join("\r\n")];
   } else if (clauses.length===0) { // no clauses remaining: a model found
     store_model(varvals);
-    if (trace_flag) trace_list.push("assignment found during simplification");    
+    if (trace_flag) trace_list.push("assignment found during simplification");  
+    result_model=clean_result(result_model,purevars);  
     return [result_model,trace_list.join("\r\n")];
   }
   
@@ -150,6 +152,7 @@ exports.dpll = function (clauses,maxvarnr,trace,varnames) {
   if (clauses.length===0) { // no clauses remaining: a model found
     store_model(varvals);
     if (trace_flag) trace_list.push("assignment found during pure literal elimination");
+    result_model=clean_result(result_model,purevars);
     return [result_model,trace_list.join("\r\n")];
   }
   // assign clauses to buckets according to literal occurrences
@@ -169,11 +172,35 @@ exports.dpll = function (clauses,maxvarnr,trace,varnames) {
   txt+=", units derived count is "+units_derived_count;  
   txt+=", max depth is "+max_depth_count;  
   trace_list.push(txt);
-  
+ 
+  result_model=clean_result(result_model,purevars);
   if (res) return [result_model,trace_list.join("\r\n")];
   else return [false,trace_list.join("\r\n")];
 }
 
+// optionally remove pure vars from the model:
+// action commented out to show pure vars in the model
+
+function clean_result(model,purevars) {
+  return model;
+  /*
+  var i,j,v,found,res;
+  res=[];
+  for(i=0;i<model.length;i++) {
+    v=model[i];
+    found=false;
+    for(j=0;j<purevars.length;j++) {
+      if (v==purevars[j] || (0-v)==purevars[j]) {
+        found=true;
+        break;
+      }     
+    } 
+    if (!found) res.push(v);   
+  }
+  res.reverse();
+  return res;
+  */
+}
 
 function satisfiable_at(derivedlen,depth,clauses,varvals,occvars,posbuckets,negbuckets,derived) {
   var queue,propres,nextvar,sign,errtxt,lit,i,satval,s;
@@ -513,7 +540,7 @@ function simplify_clause_list(clauses,varvals,occvars,posbuckets,negbuckets,deri
       if (varvals[i]!==0) s+=" "+i; //showvar(i*varvals[i])+" ";
     }  
     print_trace(0,s);
-    console.log(s);
+    //console.log(s);
   } 
   return clauses2;
 }
@@ -528,7 +555,7 @@ function simplify_clause_list(clauses,varvals,occvars,posbuckets,negbuckets,deri
  
 function count_occurrences(clauses,varvals,occvars,posbuckets,negbuckets,derived) {
   var clauses2,i,j,k,clause,lit,nr,sign,remove;
-  var clen,vval,oval,bonus,purevars,s,maxact,tmp;
+  var clen,vval,oval,bonus,s,maxact,tmp;
   
   // detect free vars (i.e. occurring only negatively or only positively)
   // and calculate initial activities for vars
@@ -540,10 +567,11 @@ function count_occurrences(clauses,varvals,occvars,posbuckets,negbuckets,derived
       if (lit<0) {nr=0-lit; sign=-1}
       else {nr=lit; sign=1};
       vval=varvals[nr];
+      //console.log("i",i,"j",j,"lit",lit,"vval",vval,"occvars[nr]",occvars[nr]);
       if(vval===0) {
         oval=occvars[nr];
-        if (oval===0) occvars[nr]=sign;
-        else if (oval===0-sign) occvars[nr]=2; // 2 marks both polarities occur
+        if (oval===0) occvars[nr]=sign;        
+        else if (oval===(0-sign)) occvars[nr]=2; // 2 marks both polarities occur
         else if (oval>=2) {
           if (clen<5) bonus=20;
           else if (clen<6) bonus=15;
@@ -552,7 +580,8 @@ function count_occurrences(clauses,varvals,occvars,posbuckets,negbuckets,derived
             if (bonus<0) bonus=1;
           }
           occvars[nr]=occvars[nr]+bonus;
-        }  
+        }
+        //console.log("stored occvars[nr]",occvars[nr]);  
       }  
     }   
   }
@@ -564,8 +593,10 @@ function count_occurrences(clauses,varvals,occvars,posbuckets,negbuckets,derived
     oval=occvars[i];
     if (oval<2) {
       purevars.push(i);
-      if (oval<0) varvals[i]=-1;
-      else varvals[i]=1;
+      //console.log("i",i,"oval",oval);
+      // commented out to disable elimination of pure vars
+      //if (oval<0) varvals[i]=-1; 
+      //else varvals[i]=1;
       varactivities[i]=0;
     } else  {
       if (varvals[i]!==0) {
@@ -584,6 +615,8 @@ function count_occurrences(clauses,varvals,occvars,posbuckets,negbuckets,derived
   }
   */
   // remove clauses containing pure vars
+  // this is commented out to enable showing of pure vars in the model
+  /*
   if (purevars.length>0) {
     pure_derived_count+=purevars.length;
     if (trace_flag) {
@@ -609,6 +642,7 @@ function count_occurrences(clauses,varvals,occvars,posbuckets,negbuckets,derived
     }
     clauses=clauses2;    
   }
+  */  
   if (trace_flag) {
     s="initial variable activities: ";
     for(i=1;i<varactivities.length;i++) {

@@ -29,7 +29,38 @@
 <!-- Bootstrap core CSS -->
 <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/css/bootstrap.min.css">
 <!-- Custom styles for this template -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono&family=Inconsolata&family=Roboto:wght@300&display=swap">
 <link href="wdb.css" rel="stylesheet">
+<style>
+  html.wf-loading * {
+     opacity: 0;
+ } 
+.jumbotron_title  {
+  font-family: 'Roboto',Arial,Helvetica,sans-serif;
+  font-weight: 300 !important;
+  line-height: 1.1 !important;
+  font-size: 24pt !important;
+  color: #666 !important;
+  text-shadow: 0px !important;
+}
+.nice-container {
+  border: 1;
+  border-width: 1px, 1px, 1px, 1px;
+  border-radius: 5px;
+  color: #666;
+}
+h2 {
+  font-size: 18px;
+}
+</style> 
+<script src="https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js"></script>
+<script>
+  WebFont.load({
+    google: {
+      families: ['Roboto', 'Inconsolata']
+    }
+  });
+</script>
 <script>
 // google analytics
   (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
@@ -58,9 +89,10 @@
     </div>
     <div class="navbar-collapse collapse">
       <ul class="nav navbar-nav">
-        <li class="dummy"><a href="index.html">Solve</a></li>        
-        <li class="dummy"><a href="propositional.html">Propositional logic</a></li>
-        <li class="dummy"><a href="predicate.html">Predicate logic</a></li>
+        <li class="dummy"><a href="index.html">Predicate logic</a></li>        
+        <li class="dummy"><a href="prop.html">Propositional logic</a></li>
+        <li class="dummy"><a href="json.html">Json</a></li>
+        <!-- <li class="dummy"><a href="predicate.html">Predicate logic</a></li> -->
         <li class="active"><a href="download.html">Download</a></li>        
         <li class="dummy"><a href="about.html">About</a></li> 
       </ul>
@@ -74,17 +106,43 @@
 <!-- Main jumbotron for a primary marketing message or call to action -->
 <div class="jumbotron" >
   <div class="container" style="text-align: left; padding-left: 45px;">
-    <h1 class="jumbotron_title">Download </h1>
-    <p class="jumbotron_caption">self-contained, no-dependencies, easy-to-hack javascript code under the
-       <a href="https://en.wikipedia.org/wiki/MIT_License">MIT licence</a>
-    </p>
-    <p style="margin-top: 20px; margin-bottom: 30px;">    
-    <a class="btn smallbtn btn-primary" style="margin-right: 20px;" 
-        href="https://github.com/tammet/logictools">from Github &raquo;</a> or as separate files:
-    </p>
+    <h1 class="jumbotron_title">Download options</h1>
 
 <div style="font-family: Arial, Helvetica, sans-serif;">
-Release 2015-03-25.<p></p>
+<p><div>      
+<h2>The whole site</h2>
+
+Download everything on this site from 
+<a href="https://github.com/tammet/logictools">Github</a>.
+
+<h2>Predicate logic and json</h2>
+
+The gkc prover used for proving the examples and converting formats 
+can be downloaded from <a href="https://github.com/tammet/gkc">Github</a> with the
+<a href="https://en.wikipedia.org/wiki/Affero_General_Public_License">Affero GPL</a> licence. 
+Instead of checking out the current development 
+version we recommend to download the latest release
+containing the pre-compiled no-dependencies command line 
+binaries for Linux, Windows, MacOS and Wasm. 
+<div style="margin-top: 10px;">
+Gkc uses the <a href="http://whitedb.org/">WhiteDb</a> main memory database
+for internal structures.
+</div>
+<div style="margin-top: 10px;">
+The JSON-LD-LOGIC proposal is available <a href="https://github.com/tammet/logictools">here</a>.
+</div>
+
+<h2>Propositional logic</h2>
+
+The propositional logic provers is a set of self-contained, no-dependencies, 
+easy-to-hack javascript code under the
+<a href="https://en.wikipedia.org/wiki/MIT_License">MIT licence</a>. 
+
+Either download everything from 
+<a href="https://github.com/tammet/logictools">from Github</a> or as separate files:
+<div style="margin-top: 10px; margin-bottom: 10px;">
+Release 2020-08-31.
+</div>
     
 <b>User interface</b> for trying out all the functions:
 
@@ -117,7 +175,7 @@ Release 2015-03-25.<p></p>
     
   </div>
 </div>
-
+</div>
 
 
 <!-- footer -->
