@@ -780,13 +780,15 @@ would contradict the row <code>john,john</code> in the negative <code>-father</c
 table, given the rule <code>-father(X,X)</code>.
 <p>
 Finding a contradiction is used as one convenient way of finding whether some
-fact/row follows from our rules. Suppose we say 
+fact/row follows from our rules. Suppose we have two statements
 <code>
-father(john,pete) &
+father(john,pete)
+</code> and
+<code>
 father(X,Y) => child(Y,X)
 </code>
 and we want to prove an obvious fact that <code>child(pete,john)</code> follows
-from this. Let us denote these three statements as <i>a,b,c</i>. Then
+from these two. Let us denote these three statements as <i>a, b, c</i>. Then
 we really want to prove that <code>a &amp; b =&gt; c</code> is true,
 which is equivalent to the question of whether the negated form
 <code>-(a &amp; b =&gt; c)</code> is contradictory, which is equivalent
@@ -1316,8 +1318,8 @@ a non-capital letter are constants, functions or predicates.</p>
 <p>Importantly, any rule like <code>a &amp; b =&gt; c</code> can be represented
 as a <i>clause</i> <code>-a | -b | c</code> where negated atoms are essentially on the left side of the implication
 and the positive atoms on the right side. For example, <code>-a | -b | c | d</code> is equivalent
-to <code>(a &amp; b) =&gt; (c | d)</code>. You can use =&gt;, &lt;=&gt; and quantifiers directly like
-in <code>-father(john,X) => $ans(X)</code> or as an equivalent clause in the example.
+to <code>(a &amp; b) =&gt; (c | d)</code>. You can use =&gt;, &lt;=&gt; directly like
+in <code>father(john,X) => $ans(X)</code> as an equivalent clause in the example.
 
 </div>
 
@@ -1344,7 +1346,7 @@ proof:
 
 <div id="example_2_proof_notes">
 <p>Notice that gkc outputs a line <code>answer: $ans(pete).</code> indicating the substitution
-made for <code>X</code>: pete is the answer we were looking for.</p>
+<code>pete</code> made for <code>X</code> is the answer we were looking for.</p>
 
 <p>Modify the example and try out the line</p>
 
@@ -1490,7 +1492,7 @@ We will use a separate json-syntax strategy text
 to tell gkc specific details of what
 to look for and how.</p>
 
-Please click on the <b>Advanced</b> button above and copy-paste the multineg.txt json 
+Please click on the <b>Advanced</b> button above and copy-paste the following json text 
 into the <b>Strategy</b> box, then click <b>Prove</b>.
 <p>
 <pre><code>{
@@ -1876,13 +1878,12 @@ p(X) => $ans(X).
 </div>
 
 <div id="example_14_input_notes"><h3>Example 14 for TPTP syntax with steam</h3>
-
+<p>
 This example is a classic "Schubert's Steamroller" puzzle taken from
 TPTP and written in fof syntax with connectives like implication as <code>=&gt;</code>, 
 quantifiers <i>for all</i> as <code>! [X] ..,</code>, <i>exists</i> as 
-<code>? [X] ... </code> etc.
+<code>? [X] ... </code> etc. The full list of infix binary connectives follows the TPTP language:
 <p>
-The full list of infix binary connectives follows the TPTP language:
 <ul>
 <li><code>"|"</code> for disjunction,
 <li><code>"&"</code> for conjunction, 
@@ -1904,7 +1905,7 @@ in <a href="http://www.tptp.org">TPTP</a>.</p>
 examples are called <i>clauses</i>. </p>
 
 <p>Each statement in the <i>TPTP fof language</i> 
-  is terminated with a period symbol . and has a structure</p>
+  is terminated with a period symbol <code>.</code> and has a structure</p>
 
 <pre><code>fof(statement_name, statement_role, statement).
 </code></pre>
@@ -2074,8 +2075,8 @@ only the names of the formulas. TPTP suggests using a particular
 format of output, including the original input before clausification,
 proved-successfully-marker, and the begin and end markers of proof.</p>
 
-<p>To use the TPTP suggested output format, select <i>TPTP format</i> from the
-box after <b>Convert to</b> button and press <b>Prove</b> again. 
+<p>To use the TPTP suggested output format, select <i>tptp</i> from the
+*format* box in the *Advanced* section and press <b>Prove</b> again. 
 
 <p>
 Try out the <i>json</i> format as well: the details of the json syntax for
@@ -2085,7 +2086,8 @@ playground</a>.
 <p>
 You can also convert the input example to different equivalent input
 formats by selecting the format from the box and clicking 
-the <b>Convert to</b> button. In particular, check out the difference
+the <b>Convert to</b> button in the *Advanced* section. 
+In particular, check out the difference
 between <i>TPTP clauses</i> and the <i>simple clauses</i>: the former
 wraps all clauses with the special
 <code>cnf(statement_name, statement_role, statement)</code> form, otherwise
@@ -2102,10 +2104,10 @@ wrapping. The current example is exactly the same as the previous example,
 but this time without wrapping, except for the last formula: it is useful to indicate
 the <i>role</i> of the question, which can be only done using the wrapped syntax.
 <p>
-Gkc does not know which clause is a question: this is ok,
+By default gkc does not know which clause is a question: this is ok,
 but it is bad for efficiency in case of large clause sets.</p>
 <p>
-  There is a simple way to tell gkc that some clause or a formula is indeed a question
+There is a simple way to tell gkc that some clause or a formula is indeed a question
 and gkc should heavily focus on that clause or a formula.</p>
 <p>Instead of writing your negated question like</p>
 
@@ -2125,6 +2127,15 @@ and gkc should heavily focus on that clause or a formula.</p>
 </code></pre>
 
 <p>and then gkc knows that this clause should get priority in search.</p>
+
+<p>Equivalently, you could pose the question in a positive form and tell
+gkc that it is a *conjecture*:</p>
+
+<pre><code>cnf(q1,conjecture,
+  father(john,pete)).
+</code></pre>
+
+
 
 <p>Similarly, you can tell gkc that a clause or a formula is not just
 an arbitrary axiom which may or may not be used, but an important
@@ -2309,7 +2320,7 @@ respectively. These may be added to the list in addition to the previous strateg
 
 <p>For "max_seconds"&lt;2 gkc will automatically use immediate check for contradiction when a clause is derived. </p>
 
-For the current example gkc tries out 16 search strategies before it hits a suitable one:
+For the current example gkc tries out 15 search strategies before it hits a suitable one:
 you can give it the following search strategy to find the proof very quickly:
 <pre><code>{
 "print_level": 15,
@@ -2620,12 +2631,12 @@ guarantee that they stand for different objects.
 
 </div>
   <pre>
-  <code id="example_19_input_code">type(smith1,"person").
+  <code id="example_19_input_code">name(smith1,'John Smith').
+type(smith1,"person").
 type(smith1,baby).
-type(smith1,'John Smith').
+name(smith2,'John Smith').
 type(smith2,"dog").
 type(smith2,newborn).
-type(smith2,name,'John Smith').
 (type(X0,X2) & type(X1,X3) & X2!=X3) => X0!=X1.
 smith1=smith2.</code>
   </pre>
