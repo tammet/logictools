@@ -51,6 +51,50 @@ html.wf-loading * {
   border-radius: 5px;
   color: #666;
 }
+.result {
+  padding: 15px; 
+  white-space: pre-wrap;
+}
+.result_wiblock {
+  padding: 0px; 
+  color: black;
+  font-family: 'Inconsolata','Roboto Mono','Courier New', Courier, monospace; 
+  border-width: 1px, 1px, 1px, 1px;
+  border-radius: 5px;
+} 
+
+code {
+    padding: .1em .4em;
+    margin: 2px 5px 2px 5px;   
+    font-size: 100%;
+    color:black !important;
+    background-color: #f4f4f4 !important;
+    border-radius: 4px;
+    font-family: 'Inconsolata','Roboto Mono','Courier New', Courier, monospace;
+}
+
+pre {    
+    background-color: white !important;   
+}
+
+pre code {
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: 100% !important;
+    color: #222 !important;
+    background-color: white !important;
+    border-radius: 0 !important;
+}
+.syntax {  
+  width: 70px; height: 30px; text-align: center; 
+  padding: 0px 0px 1px 0px;  font-size: 12px;
+  line-height: 1.42; border-radius: 15px; 
+  background-color: #cccccc; color: #337ab7; margin-left: 15px;
+}  
+.title {
+
+}
+
 </style>  
 <script src="https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js"></script>
 <script>
@@ -59,17 +103,7 @@ html.wf-loading * {
       families: ['Roboto', 'Inconsolata']
     }
   });
-</script>
-<script>
-// google analytics
-  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
-  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
-  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
-  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
-
-  ga('create', 'UA-61132529-1', 'auto');
-  ga('send', 'pageview');
-</script>  
+</script> 
 </head>
 
 <body>
@@ -135,6 +169,843 @@ Contact the author Tanel Tammet as (tanel.tammet at gmail.com).
 </div>
 </div>
 
+<!-- pred -->
+
+
+
+<div class="container title" style="margin-top: 5px; margin-bottom: 15px;">
+<h3>What is this?</h3>
+</div>
+
+
+<div class="container">
+  <!-- Example row of columns -->
+  <div class="row">
+     <div class="col-md-12 wblock wblock1">
+      <div class="wiblock wiblock_full">
+
+<!-- <h2>What is this?</h2> -->
+<p>
+A toolkit for proving classical
+<a href="https://en.wikipedia.org/wiki/First-order_logic">first order predicate logic</a> and
+<a href="https://en.wikipedia.org/wiki/Propositional_calculus">propositional logic</a>
+ formulas, answering questions
+and converting between different syntaxes for logic. 
+<p>
+Think about logic as a generic way of writing rules:
+proving formulas and answering questions is a way of detecting what follows
+from the rules we wrote. 
+<p>
+The predicate logic toolkit is built around a high-performance reasoner
+<a href="https://github.com/tammet/gkc">gkc</a> (see
+<a href="https://link.springer.com/chapter/10.1007%2F978-3-030-29436-6_32">the paper</a>)
+and runs in the browser using 
+<a href="https://en.wikipedia.org/wiki/WebAssembly">Wasm</a> without any server
+involvement. For more advanced use you may want to
+download the command-line version.
+<p>
+The educational propositional provers are self-contained, no-dependencies, easy-to-hack 
+javascript code under the
+<a href="https://en.wikipedia.org/wiki/MIT_License">MIT licence</a>.
+The focus is on simplicity, ease of use, hacking and experimenting, 
+not state of the art efficiency-wise.
+<p>
+Use these tools for learning logic and experimenting with reasoners.
+<p>
+Contents:
+<ul>
+  <li>Predicate logic
+    <ul>
+    <li><a href="#basic_syntax">Basic predicate logic syntax</a>
+    <li><a href="#what_does">What does it mean?</a>  
+    <li><a href="#special_symbols">Special symbols and additional constructions</a> 
+    <ul>   
+    <li><a href="#arithmetic">Arithmetic</a> 
+    <li><a href="#lists">Lists</a>   
+    <li><a href="#distinct_symbols">Distinct symbols as strings</a>    
+    </ul>
+    <li><a href="#automated_reasoning">Automated reasoning for predicate logic</a>  
+    <li><a href="#what_is">What is the practical use?</a>    
+    </ul>
+  </ul>
+  <ul>    
+ <li>Propositional logic
+  <ul>  
+    <li><a href="#prop_syntax">Propositional logic syntax</a>
+    <li><a href="#prop_mean">What does it mean?</a>
+    <li><a href="#prop_methods">Methods for solving propositional formulas</a>
+    <li><a href="#prop_solvers">State of the art propositional solvers</a>
+    <li><a href="#prop_parsing">Parsing, converting and printing propositional formulas</a>
+    <li><a href="#prop_generating">Generating propositional problems</a>
+  </ul>
+</ul>   
+
+
+
+</div></div></div></div>        
+
+<div class="container" style="margin-top: 5px; margin-bottom: 15px; 
+">
+<h3 id="basic_syntax">Basic predicate logic syntax</h3>
+</div>
+
+
+<div class="container">
+  <!-- Example row of columns -->
+  <div class="row">
+     <div class="col-md-12 wblock wblock1">
+      <div class="wiblock wiblock_full">
+<!-- <h3 id="basic_syntax">Basic syntax</h3> -->
+<p>
+A good way to learn syntax and meaning is to go through the explanations in the
+<i>simple examples</i>. Nevertheless, the following presents a compact
+description.
+<p>
+Gkc supports several syntaxes: the <i>simple syntax</i> used in most examples,
+<a href="http://tptp.org/">TPTP</a> syntax and 
+<a href="https://github.com/tammet/json-ld-logic">JSON-LD-LOGIC</a> syntax: see
+the separate <a href="json.html">Json</a> menu for the examples and explanations.
+<p>
+The <i>simple syntax</i> is an extension of the
+TPTP FOF and CNF syntaxes as described in the
+<a href="http://tptp.org/TPTP/TR/TPTPTR.shtml#ProblemPresentation">TPTP technical manual</a>,
+combining them into one and extending with a list
+type and a few convenience predicates and constructions.
+<p>
+The <i>simple syntax</i> input is a list of logical formulas, each terminated with
+a period. The whole list is interpreted as a big conjunction (<i>and</i>) of formulas.
+<p>
+Each <i>formula</i> is either a <i>literal</i> (a positive or a negative <i>atom</i>) or
+is constructed from simpler formulas using logical operators like 
+<ul>
+<li><code>&</code> for conjunction (and), 
+<li><code>|</code> for disjunction (or),
+<li><code>-</code> or <code>~</code> for negation (not),
+<li><code>=></code> for implication (if-then), 
+<li><i>"for all values of variables holds ..."</i> construction
+<code>! [variables] : formula</code> (example <code>! [X,Y] : p(X,Y)</code>) 
+<li><i>"exist values of variables so that ..."</i> construction <code>? [variables] : formula</code>.
+</ul>
+<p>
+Additional logical operators will be described later.  
+<p>
+An <i>atom</i> is a predicate symbol applied to a number of <i>term</i> arguments like
+<code>father(john,pete)</code> and denoting a relation between the arguments.
+A negated atom has a minus sign prepended
+like <code>-father(john,pete)</code>.
+<p>
+<i>Equality</i> is a special predicate written like <code>gender(john)=male</code>
+and meaning, as expected, that the term on the left side is equal to the term on the
+right side. <i>Inequality</i> is another special predicate written like 
+<code>gender(john)!=female</code>
+<p>
+The <i>terms</i> denote objects. A simplest term is just a symbol/constant 
+like <code>john</code>: think of it as a post-it note glued to some real thing or idea: 
+a real object may have many such notes glued to it. A <i>variable</i> like <code>X</code>
+is also a term: think of it as placeholder which can be replaced by any other term.
+<p>
+Variables must start with an upper-case character, other symbols with a lower-case character.
+There are also other options for symbols, more about these below.
+<p>
+A variable which is not in the scope of a <i>for all</i>  <code>!</code> or 
+<i>exists</i> quantifier  <code>?</code> is treated as if it is bound by the 
+<i>for all</i> quantifier. In fact, explicit quantifiers can be skipped
+altogether: they are just a convenience construction.
+<p>
+Numbers like 12 or 3.45 can be also used as constant terms.  
+<p>  
+More complex terms can be constructed from simpler terms using <i>functions</i> like
+<code>age(mother(john))</code> or <code>$sum(X,$multiply(2,X))</code>. A value of
+such a function is not always defined: it can be used just as a constructor for
+complex terms. A function may also be defined on some other terms, like <code>$sum</code>
+is defined on numbers, but not on lists. You may define functions yourself using equality
+like <code>mother(john)=eve</code> or <code>age(mother(john))=age(mother(pete))</code>.
+<p>
+Both line comments <code>%</code> and multi-line comments <code>/* ... */</code>
+are available.
+
+
+</div></div></div></div>        
+
+<div class="container" style="margin-top: 5px; margin-bottom: 15px; 
+">
+<h3 id="what_does">What does it mean?</h3>
+</div>
+
+
+<div class="container">
+  <!-- Example row of columns -->
+  <div class="row">
+     <div class="col-md-12 wblock wblock1">
+      <div class="wiblock wiblock_full">
+
+<!-- <h3 id="what_does">What does it mean?</h3> -->
+
+Logic can be seen as a fairly general way of writing down facts and rules,
+while proving the formulas means detecting what follows from the rules.
+<p>
+Think about an atom like <code>father(john,pete)</code> as saying
+that there is a row with two cells <code>john,pete</code> in a two-column 
+table <code>father</code>. In fact, the core ideas of relational database systems
+and SQL stem from this interpretation, although they branch off into specific
+directions. For example, in conventional logic notation all the elements
+in row columns are given positionally, one after another, while in SQL columns have names.
+<p>
+Each predicate like  <code>father</code> should be seen as giving rise
+to two different tables: one for positive facts and another for negative
+facts:  <code>-father(john,mike)</code> means that in the negative <i>-father</i>
+table there is a row <code>john,mike</code>. Importantly, the facts
+we state only say that there are these-and-these rows, but they do not
+say that there cannot be other rows, unknown to us. This inpreretation
+is called <a href="https://en.wikipedia.org/wiki/Open-world_assumption">open world
+assumption</a> contrasting the 
+<a href="https://en.wikipedia.org/wiki/Closed-world_assumption">closed world
+assumption</a> used in database systems and Prolog.
+<p>
+Logical formulas are then understood as rules for deriving new rows in
+the tables. For example. <code>father(X,Y) => child(Y,X)</code> means that
+if there is a row in the <code>father</code> table, the corresponding row with
+arguments exchanged must be put into the <code>child</code> table. 
+<p>
+A rule like <code>-father(X,X)</code> can be seen as saying that the
+negative <code>-father</code> table contains rows like <code>object_n,object_n</code>
+for all objects. Since
+we could potentially have infinitely many objects (think numbers and terms
+constructed from functions) we cannot always physically fill in all the rows.
+<p>
+A <i>contradiction</i> occurs when a row in the positive table also occurs
+in the corresponding negative table. For example, saying <code>father(john,john)</code>   
+would contradict the row <code>john,john</code> in the negative <code>-father</code>
+table, given the rule <code>-father(X,X)</code>.
+<p>
+Finding a contradiction is used as one convenient way of finding whether some
+fact/row follows from our rules. Suppose we have two statements
+<code>
+father(john,pete)
+</code> and
+<code>
+father(X,Y) => child(Y,X)
+</code>
+and we want to prove an obvious fact that <code>child(pete,john)</code> follows
+from these two. Let us denote these three statements as <i>a, b, c</i>. Then
+we really want to prove that <code>a &amp; b =&gt; c</code> is true,
+which is equivalent to the question of whether the negated form
+<code>-(a &amp; b =&gt; c)</code> is contradictory, which is equivalent
+to the question of whether the conjunction
+<code>a &amp; b &amp; -c</code> is contradictory. Hence we could add
+the negated form <code>-child(pete,john)</code> to our two initial statements
+and check whether a contradiction can be found.
+<p>
+Finally, an important principle of logic as used here is that no <i>common knowledge</i>
+- or rather, no knowledge at all - is assumed. Everything we want to use
+must be written explicitly as logical facts and rules. The names of the predicates
+mean nothing in itself: a reasoner knows nothing about the <code>father</code>
+predicate except what is explicitly written in the problem statement. You could
+replace all the nice human-understandable names with meaningless names and the
+logical meaning of the problem statement would be exactly the same. 
+<p>
+
+
+</div></div></div></div>        
+
+<div class="container" style="margin-top: 5px; margin-bottom: 15px; 
+">
+<h3 id="special_symbols">Special symbols and additional constructions</h3>
+</div>
+
+
+<div class="container">
+  <!-- Example row of columns -->
+  <div class="row">
+     <div class="col-md-12 wblock wblock1">
+      <div class="wiblock wiblock_full">
+
+<!-- <h3 id="special_symbols">Special symbols and additional constructions</h3> -->
+<p>
+Ordinary symbols must start with lower-case character and 
+must not contain any whitespace or non-alphanumeric characters
+like <code>(, -, ~, =, "</code> etc: however, underscore <code>_</code>
+and dollar <code>$</code> are allowed. 
+<p>
+You can put whitespace or any symbol except a single quote
+into symbols by surrounding the symbol with single quote symbols like this:
+<code>'John Smith'</code>. Internal quotes must be prefixed by a backslash
+<code>\</code>.
+<p>
+Additionally you can make a symbol variable by prefixing it with a question
+mark like this:  <code>?smth</code>.
+<p>
+Double quotes surrounding a symbol like <code>"John Smith"</code>
+have a special meaning: the symbol is treated as <i>distinct</i> (essentially,
+a <i>string</i>) meaning that it is known to be unequal to any syntactically 
+different distinct symbols, numbers and lists. This has real effect for 
+equality and string predicates, but not otherwise.
+<p>
+In addition to the typically used constructions <code>&</code>,<code>|</code>,
+<code>-</code>/<code>~</code>, <code>=></code>,
+<code>!</code>, <code>?</code> the syntax provides a number of additional infix logical
+constructions with two arguments. The full list is:
+<ul>
+<li><code>|</code> for disjunction,
+<li><code>&</code> for conjunction, 
+<li><code>&lt;=></code> for equivalence, 
+<li><code>=></code> for implication, 
+<li><code>&lt;=</code> for reverse implication, 
+<li><code><~></code> for non-equivalence (XOR), 
+<li><code>~|</code> for negated disjunction (NOR), 
+<li><code>~&</code> for negated conjunction (NAND), 
+<li><code>@</code> for application, used mainly in the higher-order context in TPTP.
+</ul>
+There are several predicates and function symbols with a pre-defined meaning: all these
+are prefixed with a dollar <code>$</code>.
+<p>
+<code>$ans</code> is used for finding the actual terms we look for as answers: see the
+<i>answers</i> example.
+
+<p>
+<h4 id="arithmetic">Arithmetic in predicate logic</h3>
+<p>  
+
+The numbers and arithmetic functions and predicates are defined following the 
+<a href="http://www.tptp.org/TPTP/TR/TPTPTR.shtml#Arithmetic">TPTP arithmetic system</a>
+plus a few convenience operators for writing infix terms:
+<ul>
+<li>Type detection predicates $is_int, $is_real.
+<li>Comparison predicates $less, $lesseq, $greater, $greatereq.
+<li>Type conversion functions $to_int, $to_real.
+<li>Arithmetic functions on integers and reals:
+$sum, $difference, $product, 
+$quotient, $quotient_e,
+$remainder_e, $remainder_t, $remainder_f, 
+$floor, $ceiling,
+$uminus, $truncate, $round.
+ <p>
+ Note: these comparison predicates and arithmetic functions take exactly two arguments.
+<p>
+ Example: <code>$less($sum(1,$to_int(2.1)),$product(3,3))</code>.
+
+<li>Additional convenience predicate is used: $is_number is true
+if and only if $is_int or $is_real is true.
+
+<li>Additional infix convenience functions +, -, *, / are
+used with the same meaning as $sum, $difference, $product and 
+$quotient, respectively.
+<p>
+Example: <code>$less(1+(1+2),(3*3))</code>
+<p>
+Note: these convenience functions take also exactly two arguments.
+</ul>
+<p><b>NB!</b> Do not use a variable or a non-numeric constant as a first element of the 
+infix arithmetic expression like <code>p(X*2)</code>, otherwise 
+the whole expression will be parsed as a single variable <i>X*2</i>. No such restrictions
+apply for the prefix form.
+
+<p> 
+<h4 id="lists">Lists in predicate logic</h3>
+<p> 
+
+You can use the list syntax like <code>[]</code> for the empty list and <code>[a,b,c]</code>
+for a three-element list. The bracket notation is syntactic sugar for
+the constant <code>$nil</code> and functional list-constructing term 
+<code>$list(a,$list(b,$list(c,$nil)))</code>, respectively.
+<p>
+Observe that <code>$list(X0,X1)</code>  
+constructs a list by prepending <code>X0</code> to the list <code>X1</code>,
+which is generally different from a two-element list <code>[X0,X1]</code>.
+<p>
+Terms constructed using <code>$list</code> or <code>$nil</code> are interpreted as having a 
+<i>list type</i>:
+<ul>
+<li>A <i>list type object</i> is inequal to any number or a distinct symbol.
+<li>Syntactically different <i>list type objects</i> A and B are unequal if at any position the corresponding
+elements of A and B are unequal typed values: numbers, lists or distinct symbols.  
+</ul>
+The following predicate and two functions are defined on lists:
+<ul>
+<li><code>$is_list(L)</code>  evaluates to <i>true</i> if A is a list and <i>false</i> is A 
+  is a number or a distinct symbol.
+<li><code>$first(L)</code>  returns the first element of the list.
+<li><code>$rest(L)</code>  returns the rest of the list, i.e. the result of removing the first element.
+</ul>
+These functions can be applied to non-list arguments, where they are left as is and not 
+evaluated.
+
+<p> 
+<h4 id="distinct_symbols">Distinct symbols as strings</h3>
+<p> 
+
+Symbols in <i>double quotes</i> like in <code>"person"</code> stand for
+for <i>distinct symbols</i>
+which can be viewed as a <i>string type</i>. A distinct symbol is not equal to any 
+other syntactically different symbol and not equal to any numbers or lists.
+</p>
+<p>
+Gkc defines a function and three predicates on distinct symbols:
+<ul>  
+<li><code>$strlen(S)</code> returns the integer length of a distinct symbol S as a string.
+<li><code>$substr(A,B)</code> evaluates to <i>true</i> if a distinct symbol A is a substring of a distinct symbol B, 
+     and <i>false</i> otherwise, provided that A and B are distinct symbols.  
+<li><code>$substrat(A,B,C)</code> evaluates to <i>true</i> if a distinct symbol A is a substring of a 
+     distinct symbol B exactly at the integer position C (starting from 0), and <i>false</i> otherwise,
+     provided that A and B are distinct symbols and C is an integer.  
+<li><code>$is_distinct(A)</code> evaluates to <i>true</i> if A is a distinct symbol and 
+  <i>false</i> if A is a number or a list.  
+</ul>  
+
+
+</div></div></div></div>        
+
+<div class="container" style="margin-top: 5px; margin-bottom: 15px; 
+">
+<h3 id="automated_reasoning">Automated reasoning for predicate logic</h3>
+</div>
+
+
+<div class="container">
+  <!-- Example row of columns -->
+  <div class="row">
+     <div class="col-md-12 wblock wblock1">
+      <div class="wiblock wiblock_full">
+
+
+<!-- <h3 id="automated_reasoning">Automated reasoning</h3> -->
+
+<p>
+Automated reasoners prove logical theorems, answer questions and (sometimes)
+can detect unprovability. Basically, they are highly optimized search systems
+often encompassing a large number of different search strategies.
+<p>
+Most of the reasoners are specialized to perform
+well on some specific kinds of problems or are extended with additional
+special capabilities. For example, the 
+<a href="https://github.com/tammet/gkc">gkc</a> prover used in this site
+is specialized for very large problems, although this capability cannot 
+be used well in the confined browser environment. Hint: you may want to
+download the command-line version for more advanced use.
+<p>
+A large special category of provers focuses on propositional logic. 
+See the <a href="prop.html">Propositional logic</a> menu for checking out their
+core ideas. The easiest way to find top level propositional solvers is to check the  
+<a href="http://www.satcompetition.org/">The international SAT Competition</a>: you
+will see the competition results for various problem categories, can download competition
+problems, source code and descriptions of the provers.
+A good alternative choice is to check out <a href="http://minisat.se">minisat</a>: 
+an easily extensible and hackable state of the art solver which is a basis for several
+other state of the art solvers. You can run
+<a href="https://msoos.github.io/cryptominisat_web/">crypto-minisat in your browser</a>,
+compiled from C to javascript using LLVM.
+<p>
+Good reading material for predicate logic provers:
+<ul>
+<li><a href="http://lambda.ee/w/images/0/06/Geoffreasoningnotes.pdf">Automated
+Theorem Proving Course Content</a> by Geoff Sutcliffe is probably the best introductory material</li> 
+<li><a href="https://resources.mpi-inf.mpg.de/departments/rg1/conferences/vtsa09/slides/schulz.pdf">
+Implementation tutorial</a> by Stephan Schulz
+<li><a href="http://resources.mpi-inf.mpg.de/departments/rg1/teaching/autrea-ss12/script/script.pdf">
+A detailed theoretical coursebook</a> by Marek Kosta and Christoph Weidenbach  
+<li><a href="http://www.cl.cam.ac.uk/~jrh13/atp/index.html">
+Handbook of Practical Logic and Automated Reasoning</a> contains code examples in ML in addition
+to an 
+<a href="http://www.cambridge.org/us/academic/subjects/computer-science/programming-languages-and-applied-logic/handbook-practical-logic-and-automated-reasoning?format=HB">
+excellent text</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Handbook_of_Automated_Reasoning">Handbook of Automated_Reasoning</a>
+for in-depth papers
+(<a href="http://www.amazon.com/Handbook-Automated-Reasoning-Volume-Set/dp/0262182238/ref=pd_sim_sbs_b_1?ie=UTF8&refRID=124AQMPSV6ZW9N4J28EG">here on Amazon</a>). </li> 
+</ul>
+
+For experimenting with general-purpose 
+<a href="http://en.wikipedia.org/wiki/Automated_theorem_proving">predicate logic solvers</a> check out:
+<ul style="margin-top: 10px;">
+<li><a href="http://tptp.org/">The TPTP Problem Library</a> for Automated Theorem Proving by 
+Geoff Sutcliffe and Christian Suttner.
+<li><a href="http://tptp.org/cgi-bin/SystemOnTPTP">Online solvers on TPTP</a></li>
+<li><a href="http://tptp.org/CASC/">The CADE ATP System Competition</a></li>
+<li><a href="https://github.com/eprover/PyRes">PyRes</a> A well-documented simple implementation in Python
+ for illustrating the basic machinery.
+</ul>
+
+Several specialized categories of predicate logic solvers exist in addition to the  
+<a href="http://en.wikipedia.org/wiki/Automated_theorem_proving">general-purpose solvers</a>
+mentioned above. Some of the categories are:
+<ul>
+<li><a href="https://en.wikipedia.org/wiki/Proof_assistant">Interactive theorem provers</a>
+like <a href="http://leanprover.github.io/">Lean</a>, <a href="https://hol-theorem-prover.org/">HOL</a>,  
+<a href="http://mizar.org/">Mizar</a>, <a href="https://github.com/coq/coq">coq</a>.  
+<li><a href="https://en.wikipedia.org/wiki/Satisfiability_modulo_theories">SMT</a> 
+(satisfiability modulo theories) solvers used for
+<a href="https://en.wikipedia.org/wiki/Formal_verification">formal verification</a> like
+<a href="https://github.com/Z3Prover/z3">Z3</a>
+and 
+<a href="http://pvs.csl.sri.com/">PVS</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Answer_set_programming">Answer set</a> based solvers
+like <a href="http://www.dlvsystem.com/">DLV</a> and
+<a href="http://www.tcs.hut.fi/Software/smodels/">Smodels</a>, see
+<a href="https://www.mat.unical.it/aspcomp2013">the competition</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Description_logic">Description logic</a> 
+solvers, see <a href="http://www.cs.man.ac.uk/~sattler/reasoners.html">the list of implementations</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Web_Ontology_Language">OWL</a> 
+(web ontology language) solvers used in the context of 
+<a href="https://en.wikipedia.org/wiki/Semantic_Web">semantic web</a>, see 
+<a href="http://www.w3.org/2001/sw/wiki/OWL/Implementations">the list of implementations</a></li>  
+</ul>
+
+
+</div></div></div></div>        
+
+<div class="container" style="margin-top: 5px; margin-bottom: 15px; 
+">
+<h3 id="what_is"">What is the practical use?</h3>
+</div>
+
+
+<div class="container">
+  <!-- Example row of columns -->
+  <div class="row">
+     <div class="col-md-12 wblock wblock1">
+      <div class="wiblock wiblock_full">
+
+<!-- <h3 id="what_is">What is the practical use?</h3> -->
+<p>
+For the generic reasoners, mostly niche applications so far. 
+The eighties-hype of expert systems and
+symbolic A.I. with little practical value lead to the famous
+<a href="https://en.wikipedia.org/wiki/AI_winter">A.I. winter</a>. This said,
+the propositional and SMT provers are seriously used for verification,
+test generation and configuration management.
+<p>
+The main obstacles for wider use: (a) it is very hard, or practically impossible (although
+theoretically possible) to hand-encode most of human expert knowledge in logical rules, 
+(b) proof search without intelligent guidance is really hard, (c) basic predicate logic
+without probabilities, default reasoning etc etc is extremely impractical for encoding
+commonsense knowledge.
+<p>
+There is hope for a new rise of reasoners as parts of a 
+<a href="https://bdtechtalks.com/2020/03/04/gary-marcus-hybrid-ai/">
+machine-learning-and-reasoning</a>
+hybrid systems performing common sense reasoning. Check out a 
+<a href="https://arxiv.org/abs/2003.13159">preprint</a> proposing several mechanisms
+in this direction.
+<p> 
+
+</div></div></div></div>  
+
+<!-- prop -->
+
+
+  
+<div class="container" style="margin-top: 5px; margin-bottom: 15px; 
+">
+<h3 id="prop_syntax">Propositional logic syntax</h3>
+</div>
+
+
+<div class="container">
+<!-- Example row of columns -->
+<div class="row">
+   <div class="col-md-12 wblock wblock1">
+    <div class="wiblock wiblock_full">
+<p>  
+
+Use either a conventional formula syntax like
+<pre><code>(a -&gt; b) &amp; a &amp; -b
+</code></pre>
+or a <a href="http://www.domagoj-babic.com/uploads/ResearchProjects/Spear/dimacs-cnf.pdf">dimacs</a> 
+version of the clause normal form syntax like
+<pre><code>-1 2
+1
+-2
+</code></pre>
+which is a conjunction of disjunction lines with numbers standing for variables:
+the last example means simply <tt>(-x1 v x2) &amp; x1 &amp; -x2</tt>
+<p><p>
+For conventional formula syntax:
+<ul>
+<li>negation symbols are <b>-, ~</b></li>
+<li>conjunction symbols are <b>&amp;, and</b></li>
+<li>disjunction symbols are <b>|, v, V, or</b></li> 
+<li>xor symbols are <b>+, xor </b></li>
+<li>implication symbols are <b>-&gt;, =&gt;</b></li> 
+<li>equivalence symbols are <b>&lt;-&gt;, &lt;=&gt;</b></li> 
+</ul>
+There is no operator precedence; all operators are bound from left:<br>
+<tt>a &amp; b v c &amp; d v e</tt>  is read as <tt>((((a &amp; b) v c) &amp; d) v e)</tt>
+<p><p>
+For dimacs you may use or skip the initial comment lines starting with <b>c</b>,
+the special <b>p</b> line and the final <b>0</b> symbols at the end of each disjunct.
+We allow the trailing <b>0</b>-s only at the end of a line.
+<p>
+I.e. you may use the full dimacs version like
+<pre><code>c comment
+p cnf 2 3
+-1 2 0
+1 0
+-2 0
+</code></pre>
+or just
+<p>
+<pre><code>-1 2
+1
+-2
+</code></pre>        
+<p>
+
+</div></div></div></div>
+
+<div class="container" style="margin-top: 5px; margin-bottom: 15px; 
+">
+<h3 id="prop_mean">What does it mean?</h3>
+</div>
+
+<div class="container">
+<!-- Example row of columns -->
+<div class="row">
+ <div class="col-md-12 wblock wblock1">
+  <div class="wiblock wiblock_full">
+<p>    
+<a href="http://en.wikipedia.org/wiki/Boolean_satisfiability_problem">Solving</a> a 
+<a href="http://en.wikipedia.org/wiki/Classical_logic"> classical</a>
+<a href="http://en.wikipedia.org/wiki/Propositional_calculus">propositional formula</a>
+means looking for such values of variables that the formula becomes true. For example,
+<tt>(a -&gt; b) &amp; a</tt> becomes true if and only if both <tt>a</tt> and <tt>b</tt> are assigned true. 
+<p></p>
+You can select and try out several solver algorithms: 
+the "<a href='http://en.wikipedia.org/wiki/DPLL_algorithm'>DPLL</a> better" 
+is the best solver amongst the options offered on our page. 
+Read the "Methods for solving formulas" section below about the differences between algorithms.
+<p></p>
+One single suitable set of values
+is enough as a solution: our solver algorithms stop and do not try to find additional solutions. Some of the solver algorithms
+output the suitable values, but some do not, or output a partial set.
+<p></p>
+It may also happen that the formula is false for all possible values of variables: if so, the solver algorithms report
+that after exhausting the search options. For example,
+<tt>(a -&gt; b) &amp; a &amp; -b</tt> is always false.
+<p></p>
+Notice that you can check whether some formula <i>F</i> is always true by trying to solve the 
+<b>negated</b> formula <i>-F</i>: in case <i>-F</i> is always false, <i>F</i> must be always true.
+<p></p>      
+Our solvers may optionally output a trace of the search process. Select "html trace" to see the search
+process.
+<p></p>
+For formula-syntax input our solvers first convert the formula to a 
+<a href="http://en.wikipedia.org/wiki/Conjunctive_normal_form">clause normal form</a>: for certain kinds of formulas this
+conversion step may create a huge output, but in most cases it is a sensible simplification before actual search.
+<p>    
+</div>    
+</div>
+</div></div>
+
+
+
+<div class="container" style="margin-top: 25px; margin-bottom: 25px;">
+<h3 id="prop_methods">Methods for solving propositional formulas</h3>
+</div>
+
+<div class="container">
+<!-- Example row of columns -->
+<div class="row">
+   <div class="col-md-12 wblock wblock1">
+    <div class="wiblock wiblock_full">
+There are three main method categories for solving classical propositional formulas:
+<p><p>
+<ul>
+<li><b><a href="http://en.wikipedia.org/wiki/Truth_table">Truth table</a> search</b>: 
+generate all possible assignment combinations for all the 
+variables in the formula and check for each assigment whether the formula is true. Since the number
+of combinations is two to the power of the number of variables, this becomes infeasible for formulas
+with a large number of variables. 
+<p></p>
+This <a href="proplog_searchtable.js">"truth-table: naive"</a> method can be improved by checking also 
+<i>partial</i> assigments where only some variables have
+been assigned values: it may happen that a formula becomes false even after just a few variables have been
+assigned. This is implemented as the <a href="proplog_searchtable.js">"truth table: better"</a>
+method on our page.
+<p></p>
+</li>
+<li><a href="http://en.wikipedia.org/wiki/Resolution_(logic)"><b>Resolution search</b></a>: 
+the idea of the resolution method is to use a gneralization of 
+<a href="http://en.wikipedia.org/wiki/Modus_ponens">modus ponens</a> to derive 
+new clauses from the existing clauses. Clauses are derived until all combinations are exchausted or a contradiction is 
+derived. The resolution method should be seen as a general framework: actual solvers implement wildly different
+strategies and optimisations.
+<p></p>
+Our <a href="proplog_naiveres.js">"resolution: naive"</a> method generates clauses in all possible ways and implements no optimizations. 
+The <a href="proplog_res.js">"resolution: better"</a> is significantly optimized: preprocessing clauses, 
+literals in clauses are ordered like [-3-1,2,5], 
+ordered resolution is used (only the first literal of a clause is selected),
+always selecting the shortest usable clause as given,
+storing and simplification by unit clauses (assigned variables),
+forward subsumption of selected clauses and partial backward-subsumption.
+<p></p>
+While resolution has been the basis of most state-of-art 
+<a href="http://en.wikipedia.org/wiki/Automated_theorem_proving">predicate logic solvers</a>, for propositional logic
+it is inferior to the DPLL method described next.
+<p></p>
+</li>
+<li><a href="http://en.wikipedia.org/wiki/DPLL_algorithm"><b>DPLL (Davis-Putnam-Logemann-Loveland) search</b></a>
+is essentially a constraint solver based on the combination of the truth table search with (limited) 
+resolution. For each partial assigment of values in the truth table search we (a) test whether the formula is
+already false (like the "truth table: better" method above) and (b) use unit clauses (single literals) to derive new
+unit clauses, which is essentially a limited version of resolution.
+<p></p>
+The DPLL method should be also seen as a general framework: actual solvers implement wildly different
+strategies and optimisations. An excellent source for reading about various methods used by the state of the
+art solvers is the <a href="http://minisat.se/Papers.html">collection of papers</a> by the authors of 
+<a href="http://minisat.se">Minisat</a>, a popular high-end solver. An important extension to DPLL is
+<a href="https://en.wikipedia.org/wiki/Conflict-Driven_Clause_Learning">Conflict-Driven Clause Learning</a>,
+currently not implemented by the solvers presented on our page.
+<p></p>
+We provide three versions of DPLL solvers for experimenting, from worst (and easiest to understand) to 
+better and more complicated:
+<ul>
+<li><a href="proplog_naivedpll.js">dpll: naive</a>
+a minimal, naive implementation of dpll with no optimizations. The code is very similar to the 
+<a href="proplog_searchtable.js">pure table search solver</a>.</li>
+<li><a href="proplog_olddpll.js">dpll: old</a> 
+an improved <i>old-style</i> (before the improvements developed in nineties) DPLL. 
+It adds the pure literal rule (used after every unit propagation step), selects literals according to weights
+calculated before the start of the search, organizes clauses into buckets associated with variables.</li>
+<li><a href="proplog_dpll.js">dpll: better</a> implements additional widely used optimizations on
+top of the "dpll: old" version (see, for example, 
+<a href="http://minisat.se/Papers.html">minisat papers</a> for explanations):
+<ul>
+  <li>simple preprocessing before search starts: limited unit propagation/subsumption,
+    tautology deletion and pure literal deletion</li>
+  <li>does not use pure literal rule during search (too time-consuming)</li>    
+  <li>learning variable weights: the last contradiction clause adds weights to the variables it contains</li>
+  <li>only two literals per clause are watched</li>
+</ul> 
+However, the important 
+<a href="https://en.wikipedia.org/wiki/Conflict-Driven_Clause_Learning">Conflict-Driven Clause Learning</a>
+strategy is not implemented.
+</li>  
+<p></p>
+
+
+</li>
+    </div>
+  </div>        
+</div>
+</div>
+
+
+<div class="container" style="margin-top: 25px; margin-bottom: 25px;">
+<h3 id="prop_solvers">State of the art propositional solvers</h3>
+</div>
+
+<div class="container">
+<!-- Example row of columns -->
+<div class="row">
+   <div class="col-md-12 wblock wblock1">
+    <div class="wiblock wiblock_full">
+The easiest way to find top level propositional solvers is to check the  
+<a href="http://www.satcompetition.org/">The international SAT Competition</a>: you
+will see the competition results for various problem categories, can download competition
+problems, source code and descriptions of the provers.
+<p></p>
+A good alternative choice is to check out <a href="http://minisat.se">minisat</a>: 
+an easily extensible and hackable state of the art solver which is a basis for several
+other state of the art solvers. You can even run
+<a href="http://www.msoos.org/2013/09/minisat-in-your-browser/">minisat in your browser</a>,
+compiled from C to javascript using LLVM.
+
+
+    </div>
+  </div>        
+</div>
+</div>
+
+
+<div class="container" style="margin-top: 25px; margin-bottom: 25px;">
+<h3 id="prop_parsing">Parsing, converting and printing propositional formulas</h3>
+</div>
+
+<div class="container">
+<!-- Example row of columns -->
+<div class="row">
+   <div class="col-md-12 wblock wblock1">
+    <div class="wiblock wiblock_full">
+    
+The three building options "truth table", "clause normal form" and a "parse tree" are simple,
+useful utilities implemented in <a href="proplog_parse.js">proplog_parse.js</a> and
+<a href="proplog_convert.js">proplog_convert.js</a>:
+
+<p><p>
+<ul>
+<li>
+The <b>truth table</b> implemented in <a href="proplog_convert.js">proplog_convert.js</a>
+prints a full  
+<a href="http://en.wikipedia.org/wiki/Truth_table">truth table</a> 
+of a formula up to 1024 rows: nice for checking out
+small propositional formulas.
+<p>
+</li><li>
+The <b>clause normal form</b> implemented in <a href="proplog_convert.js">proplog_convert.js</a> is a 
+<a href="http://en.wikipedia.org/wiki/Conjunctive_normal_form">conjunctive normal form</a> just as used by
+the solvers. The conversion algorithm used is very simple and does not perform any optimizations. In many
+cases the optimized converters like the 
+<a href="http://en.wikipedia.org/wiki/Tseitin_transformation">Tseitin transformation</a> 
+would give a much smaller output much faster.
+<p>
+</li><li>
+The <b>parse tree</b> implemented in 
+<a href="proplog_parse.js">proplog_parse.js</a> prints a formula as a nested list built by the simple
+<a href="http://en.wikipedia.org/wiki/Recursive_descent_parser">recursive descent parser</a>. 
+This list is later used by the
+clause normal form converter to build the form suitable for solvers. Check the parse tree in case you are
+not sure how the system understands your formula.
+</li>
+</ul>
+
+    </div>
+  </div>        
+</div>
+</div>
+
+
+
+<div class="container" style="margin-top: 25px; margin-bottom: 25px;">
+<h3 id="prop_generating">Generating propositional problems</h3>
+</div>
+
+<div class="container">
+<!-- Example row of columns -->
+<div class="row">
+   <div class="col-md-12 wblock wblock1">
+    <div class="wiblock wiblock_full">
+    
+<b>Generate a problem</b> button will call generators implemented in 
+<a href="proplog_generate.js">proplog_generate.js</a> to generate an example problem in a simple 
+<a href="http://www.domagoj-babic.com/uploads/ResearchProjects/Spear/dimacs-cnf.pdf">DIMACS format</a>
+of a clause normal form, suitable for solvers.
+<p><p>
+The options for the type of a problem are:
+<ul>
+<li><b>random 3-sat</b> generates a random set of 
+<a href="http://en.wikipedia.org/wiki/Boolean_satisfiability_problem#3-satisfiability">clauses of length 3</a>,
+using the number of
+variables you choose: problems containing more variables are, on the average, harder to solve.
+The number of clauses is always four times the number of variables: this
+is, on the average, a specially hard-to-solve ratio for solvers.
+<p><p>For DPLL try out 200 variables or
+more. Truth table solvers start running into trouble with more than 20 variables. The resolution
+provers are a bit better than the truth table solvers, yet much worse than the DPLL solvers.</li>
+<li><b>all combinations</b> generates a set of clauses representing all possible combinations 
+of the input variables: any such set is unsatisfiable (i.e. no values of variables can make it true).
+The number of clauses is hence always two to the power of the number of variables.</li>
+<li><b>small unsat</b> generates a very small unsatisfiable clause set, consisting of a single long
+clause containing all the variables and N single-element clauses containing all variables negated.</li>
+</ul>
+The <b>clear</b> button simply clears the input field and result.
+<p>
+You can also <b>browse</b> and read the contents of a file into the input area: essentially copy-paste from
+a file.       
+
+    </div>
+  </div>        
+</div>
+</div>
+
 <!-- footer -->
 
 <div class="ofooter">  
@@ -145,44 +1016,20 @@ Contact the author Tanel Tammet as (tanel.tammet at gmail.com).
 
 <!-- at-end-scripts -->
 
-<script>
-// instead of jquery
 
-function gid(x) { return document.getElementById(x); }
-
-// reading a file
-/*
-function handleFileSelect(evt) {
-  var files = evt.target.files; 
-  for (var i = 0, f; f = files[i]; i++) {
-    var reader = new FileReader();
-    reader.onload = (function(theFile) {
-      return function(e) { gid('propinput').value=e.target.result; };
-    })(f);
-    reader.readAsText(f);
-  }
-}
-
-gid('files').addEventListener('change', handleFileSelect, false);
-*/
-</script>
 <!-- ui with bootstrap -->
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/js/bootstrap.min.js"></script>
-<!-- Solver code -->
-<!--
-<script src="proplog_ui.js"></script>
-<script src="proplog_parse.js"></script>
-<script src="proplog_convert.js"></script>
-<script src="proplog_generate.js"></script>
-<script src="proplog_dpll.js"></script>
-<script src="proplog_olddpll.js"></script>
-<script src="proplog_naivedpll.js"></script>
-<script src="proplog_searchtable.js"></script>
-<script src="proplog_naiveres.js"></script>
-<script src="proplog_res.js"></script>
--->
-
+<script>
+  // google analytics
+    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+    })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+  
+    ga('create', 'UA-61132529-1', 'auto');
+    ga('send', 'pageview');
+</script> 
   
 </body>
 </html>
