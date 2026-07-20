@@ -1,4 +1,5 @@
 http://logictools.org
+http://logictools.org/commonsense.html
 http://logictools.org/json.html
 http://logictools.org/prop.html
 http://logictools.org/download.html

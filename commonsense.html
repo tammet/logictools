@@ -1,0 +1,1530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head itemscope>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<meta name="description" content="Online commonsense reasoner: uncertain knowledge, defaults and exceptions, contradictions.">
+<meta name="author" content="Tanel Tammet">
+<meta name="keywords" content="commonsense reasoning, logic, solver, defaults, exceptions, uncertainty, confidence, nonmonotonic">
+
+<meta itemprop="itemtype" content="http://schema.org/SoftwareApplication">
+<meta itemprop="name" content="Logictools commonsense reasoner">
+<meta itemprop="description" content="Online commonsense reasoner.">
+<meta itemprop="url" content="http://logictools.org/commonsense.html">
+<meta itemprop="operatingSystems" content="Linux, Windows">
+<meta itemprop="softwareApplicationCategory" content="WebApplication">
+
+<meta property="og:title" content="Logictools: commonsense reasoning">
+<meta property="og:url" content="http://logictools.org/commonsense.html">
+<meta property="og:site_name" content="Logictools">
+<meta property="og:type" content="website">
+<meta property="og:description" content="Online commonsense reasoner.">
+<meta property="fb:admins" content="tanel.tammet">
+
+<link rel="shortcut icon" href="logo.png">
+
+<title>Logictools: commonsense reasoning</title>
+<!-- Bootstrap core CSS -->
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/css/bootstrap.min.css">
+<!-- Custom styles for this template -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono&family=Inconsolata&family=Roboto:wght@300&display=swap">
+<link rel="stylesheet" href="wdb.css">
+<style>
+html.wf-loading * {
+     opacity: 0;
+ }
+.result {
+  padding: 15px;
+  white-space: pre-wrap;
+}
+.result_wiblock {
+  padding: 0px;
+  color: black;
+  font-family: 'Inconsolata','Roboto Mono','Courier New', Courier, monospace;
+  border-width: 1px, 1px, 1px, 1px;
+  border-radius: 5px;
+}
+
+.syntax {
+  width: 70px; height: 30px; text-align: center;
+  padding: 0px 0px 1px 0px;  font-size: 12px;
+  line-height: 1.42; border-radius: 15px;
+  background-color: #cccccc; color: #337ab7; margin-left: 15px;
+}
+
+.btn-prove {
+  font-family: Arial, Helvetica, sans-serif;
+}
+.btn-file {
+  position: relative;
+  overflow: hidden;
+}
+.btn-file input[type=file] {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 100px;
+  min-height: 100px;
+  font-size: 100%;
+  text-align: right;
+  filter: alpha(opacity=0);
+  opacity: 0;
+  outline: none;
+  background: white;
+  cursor: inherit;
+  display: block;
+}
+
+code {
+    padding: .1em .4em;
+    margin: 2px 5px 2px 5px;
+    font-size: 100%;
+    color:black !important;
+    background-color: #f4f4f4 !important;
+    border-radius: 4px;
+    font-family: 'Inconsolata','Roboto Mono','Courier New', Courier, monospace;
+}
+
+pre {
+    background-color: white !important;
+}
+
+pre code {
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: 100% !important;
+    color: #222 !important;
+    background-color: white !important;
+    border-radius: 0 !important;
+}
+
+.modelinks a { margin-right: 4px; }
+</style>
+<script src="https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js"></script>
+<script>
+  WebFont.load({
+    google: {
+      families: ['Roboto', 'Inconsolata']
+    }
+  });
+</script>
+<script>
+'use strict';
+
+// ---- state --------------------------------------------------------------
+
+var activePreset = {};        // preset of the currently selected example
+var kbCache = null;           // cached background knowledge base text
+var gkWorker = null;          // the worker running the current/last solve
+
+// Per-example presets applied when an example is picked. Keys are the option
+// values of the two example menus.
+//   detail:true      -> switch the detail report on
+//   strategy:"..."   -> prefill the strategy field
+//   seconds:"30"     -> set the time limit
+//   maxanswers:"1"   -> set the max-answers field
+//   confidence:"0.1" -> set the confidence-limit field
+//   background:true  -> load the shared knowledge base gk_axioms_std.js
+var examplePresets = {
+  "4":  { detail: true },
+  "7":  { detail: true },
+  "11": { detail: true },
+  "13": { strategy: '{"strategy":["unit"],"query_preference":0,"arith_instantiation":1}' },
+  "15": { detail: true },
+  "20": { seconds: "30", maxanswers: "1" },
+  "21": { strategy: '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}', confidence: "0.1", background: true },
+  "22": { strategy: '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}', confidence: "0.1", background: true }
+};
+
+function gid(x) { return document.getElementById(x); }
+function showResult(text) { gid("result").innerHTML = text; }
+
+// ---- running gk ---------------------------------------------------------
+
+// Read the Advanced controls into a gk argument list (without the input file
+// names). Never adds -parallel: the WebAssembly build runs single-process.
+function buildArgs() {
+  var args = [];
+  var secs = parseInt(gid("seconds").value, 10); if (isNaN(secs)) secs = 5;
+  args.push("-seconds", "" + secs);
+  if (gid("detail").value == "on") args.push("-detail");
+  var pl = gid("print_level").value; if (pl) args.push("-print", pl);
+  if (gid("print_derived").value == "on") args.push("-derived");
+  var ma = parseInt(gid("maxanswers").value, 10);
+  if (!isNaN(ma)) args.push("-maxanswers", "" + ma);
+  var cf = gid("confidence").value;
+  if (cf !== "" && !isNaN(parseFloat(cf))) args.push("-confidence", "" + parseFloat(cf));
+  var st = gid("strategy").value;
+  if (st && st.trim()) args.push("-strategytext", st.trim());
+  return args;
+}
+
+// A fresh worker per solve (see gkworker.js for why). The previous worker, if
+// any, is terminated first, which also lets Stop and a new Solve cancel a
+// long-running search.
+function solveWith(input, args, kb) {
+  if (typeof Worker === "undefined") {
+    showResult("this browser does not support Web Workers, which are needed to run the solver");
+    return;
+  }
+  if (gkWorker) { gkWorker.terminate(); gkWorker = null; }
+  var w = new Worker("gkworker.js");
+  gkWorker = w;
+  w.onmessage = function (ev) {
+    var out = (ev.data && ev.data.output) ? ev.data.output : "";
+    showResult(out.trim() || "(no output)");
+    if (w === gkWorker) { w.terminate(); gkWorker = null; }
+  };
+  w.onerror = function (e) {
+    showResult("solver error: " + (e.message || e));
+    if (w === gkWorker) { gkWorker = null; }
+  };
+  w.postMessage({ input: input, args: args, kb: (kb === undefined ? null : kb) });
+}
+
+function ensureKB(ok, fail) {
+  if (kbCache !== null) { ok(kbCache); return; }
+  fetch("gk_axioms_std.js")
+    .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+    .then(function (t) { kbCache = t; ok(t); })
+    .catch(function (e) { fail(e); });
+}
+
+function useGk(el) {
+  var input = gid("gkc_1_input").value;
+  var flags = buildArgs();
+  showResult("solving...");
+  if (activePreset && activePreset.background) {
+    showResult("loading background knowledge...");
+    ensureKB(
+      function (kb) { solveWith(input, ["axioms_std.js", "input"].concat(flags), kb); },
+      function (err) { showResult("could not load background knowledge (gk_axioms_std.js): " + err); }
+    );
+  } else {
+    solveWith(input, ["input"].concat(flags), null);
+  }
+}
+
+function stopSolve(el) {
+  if (gkWorker) { gkWorker.terminate(); gkWorker = null; showResult("stopped."); }
+}
+
+// ---- Advanced controls and examples -------------------------------------
+
+function switchAdvanced() { $('#advanced_buttons').slideToggle('slow'); }
+
+function resetAdvanced() {
+  gid("seconds").value = "5";
+  gid("detail").value = "off";
+  gid("print_level").value = "10";
+  gid("print_derived").value = "off";
+  gid("maxanswers").value = "";
+  gid("confidence").value = "";
+  gid("strategy").value = "";
+}
+
+function applyPreset(p) {
+  if (p.seconds) gid("seconds").value = p.seconds;
+  if (p.detail) gid("detail").value = "on";
+  if (p.maxanswers) gid("maxanswers").value = p.maxanswers;
+  if (p.confidence) gid("confidence").value = p.confidence;
+  if (p.strategy) gid("strategy").value = p.strategy;
+  if (Object.keys(p).length) gid("advanced_buttons").style.display = "block";
+}
+
+function setNotes(divid, srcel) {
+  if (srcel && srcel.innerHTML) gid(divid).innerHTML = srcel.innerHTML;
+  else gid(divid).innerHTML = "";
+}
+
+function selectExample(level) {
+  var sel = (level == 'simple') ? gid("select_example") : gid("select_advanced_example");
+  var other = (level == 'simple') ? gid("select_advanced_example") : gid("select_example");
+  var value = sel.options[sel.selectedIndex].value;
+  if (other) other.selectedIndex = 0;
+  resetAdvanced();
+  activePreset = {};
+  if (!value || value == "examples") {
+    gid("input_notes").innerHTML = "";
+    gid("proof_notes").innerHTML = "";
+    gid("result").innerHTML = "";
+    return;
+  }
+  var placeid = "example_cs" + value + "_";
+  var el = gid(placeid + "input_code");
+  if (el && el.innerHTML) {
+    var html = el.innerHTML
+      .replace(new RegExp("&amp;", "g"), "&")
+      .replace(new RegExp("&gt;", "g"), ">")
+      .replace(new RegExp("&lt;", "g"), "<");
+    gid("gkc_1_input").value = html;
+  } else {
+    gid("gkc_1_input").value = "";
+  }
+  setNotes("input_notes", gid(placeid + "input_notes"));
+  setNotes("proof_notes", gid(placeid + "proof_notes"));
+  gid("result").innerHTML = "";
+  var p = examplePresets[value] || {};
+  activePreset = p;
+  applyPreset(p);
+}
+
+function clearOutput(el) { gid("result").innerHTML = ""; }
+
+function clearInput(el) {
+  if (gid("select_example")) gid("select_example").selectedIndex = 0;
+  if (gid("select_advanced_example")) gid("select_advanced_example").selectedIndex = 0;
+  gid("gkc_1_input").value = "";
+  gid("input_notes").innerHTML = "";
+  gid("proof_notes").innerHTML = "";
+  activePreset = {};
+}
+</script>
+</head>
+
+<body>
+
+<div id="fb-root"></div>
+
+<div class="navbar navbar-inverse navbar-static-top" style="background-color: #333333;">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">Logictools</a>
+    </div>
+    <div class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li class="dummy"><a href="index.html">Predicate logic</a></li>
+        <li class="active"><a href="commonsense.html">Commonsense</a></li>
+        <li class="dummy"><a href="prop.html">Propositional logic</a></li>
+        <li class="dummy"><a href="json.html">Json</a></li>
+        <li class="dummy"><a href="download.html">Download</a></li>
+        <li class="dummy"><a href="about.html">About</a></li>
+      </ul>
+    </div><!--/.navbar-collapse -->
+  </div>
+</div>
+
+<div class="container">
+  <div class="row">
+    <div class="col-md-12 wblock wblock1">
+
+<h2 style="font-family: 'Roboto',Arial,Helvetica,sans-serif; font-weight: 300; line-height: 1.1;">Commonsense reasoning:
+  <button type="button" class="btn btn-default"
+         onclick="gid('syntax').style.display='block'; document.location='#syntax'; "
+         style="
+          width: 70px; height: 30px; text-align: center;
+          padding: 0px 0px 1px 0px;  font-size: 12px;
+          line-height: 1.42; border-radius: 15px;
+          background-color: #cccccc; color: #337ab7; margin-left: 15px;"
+         >syntax</button>
+</h2>
+
+<p>
+Type your knowledge and a question into the text box, then press <i>solve</i>:
+the <a href="https://github.com/tammet/gkreasoner">gk reasoner</a> compiled
+into WebAssembly runs in your browser and prints the answer with a proof.
+Unlike the classical <a href="index.html">predicate logic solver</a>, gk
+handles knowledge that is uncertain, contradictory or true only by default:
+statements carry confidences, rules can have exceptions, and evidence against
+an answer is weighed against the evidence for it.
+</p>
+<p>
+The first example menu introduces the main features. The second contains
+alternative input notations and longer problems. Selecting an example fills
+the text box and shows input and result notes.
+</p>
+<p class="modelinks">
+More about this:
+<a href="#whatModal" data-toggle="modal">what this solver does</a> &middot;
+<a href="#outputModal" data-toggle="modal">reading the output</a> &middot;
+<a href="#confModal" data-toggle="modal">confidences</a> &middot;
+<a href="#defaultsModal" data-toggle="modal">defaults</a> &middot;
+<a href="#" onclick="gid('syntax').style.display='block'; document.location='#syntax'; return false;">syntax</a>
+</p>
+
+  <div class="form-inline" method="post" osnubmit="return false;">
+    <div class="wblock">
+      <div id="gkc_1">
+        <textarea class="form-control" id="gkc_1_input" spellcheck="false"
+        style="height: 200px; width:100%; margin-bottom: 20px; color: black;
+        font-family: 'Inconsolata','Roboto Mono','Courier New', Courier, monospace; ">penguin(polly).
+
+bird(X) :- penguin(X).
+animal(X) :- bird(X).
+
+query(animal(X)).
+
+% Pick an example from the menus, or edit this and press Solve.</textarea>
+        <button onclick="useGk(this); return false;" class="btn btn-small btn-primary btn-prove"
+        style="width: 70px;">Solve</button>
+        <button onclick="stopSolve(this); return false;" class="btn btn-small btn-default"
+        style="width: 55px;">Stop</button>
+        <div style="display: inline-block; width: 50px; text-align: center;">examples</div>
+        <select class="form-control" style="width: 150px;" id="select_example"
+          onchange="selectExample('simple')">
+          <option value="examples">examples</option>
+          <option value="1">facts and rules</option>
+          <option value="2">confidences</option>
+          <option value="3">several sources</option>
+          <option value="4">for and against</option>
+          <option value="5">rule chains</option>
+          <option value="6">shared evidence</option>
+          <option value="7">contested premises</option>
+          <option value="8">defaults</option>
+          <option value="9">an exception</option>
+          <option value="10">penguins</option>
+          <option value="11">Nixon diamond</option>
+          <option value="12">a story</option>
+        </select>
+        <div style="display: inline-block; width: 62px; text-align: center;">more</div>
+        <select class="form-control" style="width: 150px;" id="select_advanced_example"
+        onchange="selectExample('advanced')">
+          <option value="examples">more examples</option>
+          <option value="13">arithmetic</option>
+          <option value="14">equality</option>
+          <option value="15">conflict detail</option>
+          <option value="16">JSON notation</option>
+          <option value="17">GKS notation</option>
+          <option value="18">TPTP notation</option>
+          <option value="19">defaults in JSON</option>
+          <option value="20">planning (slow)</option>
+          <option value="21">English: penguins</option>
+          <option value="22">English: which one</option>
+        </select>
+        <div style="display: inline-block; width: 28px; text-align: center;">or</div>
+        <span class="btn btn-default btn-file">
+        Browse<input type="file" id="files" name="files" value="">
+        </span>
+        <div style="display: inline-block; width: 30px;  margin-left: 10px;"></div>
+        <button onclick="switchAdvanced(); return false;"
+          class="btn btn-small btn-default"
+        >Advanced</button>
+        <button onclick="clearOutput(this); return false;" class="btn btn-small btn-default"
+        >Clear result</button>
+        <button onclick="clearInput(this); return false;" class="btn btn-small btn-default"
+        >Clear input</button>
+        <div id="advanced_buttons" style="padding-top: 15px; display: none;">
+          <div style="display: inline-block; width: 62px; text-align: center;">seconds</div>
+          <input type="text" class="form-control" id="seconds" value="5" style="width: 50px"></input>
+          <div style="display: inline-block; width: 90px; text-align: center;">detail report</div>
+          <select class="form-control" style="width: 65px;" id="detail">
+            <option value="off">off</option>
+            <option value="on">on</option>
+          </select>
+          <div style="display: inline-block; width: 65px; text-align: center;">print level</div>
+          <select class="form-control" style="width: 115px;" id="print_level">
+            <option value="10">minimal</option>
+            <option value="11">+ strategy</option>
+            <option value="12">+ runs</option>
+            <option value="15">+ statistics</option>
+          </select>
+          <div style="display: inline-block; width: 85px; text-align: center;">show&nbsp;derived</div>
+          <select class="form-control" style="width: 65px;" id="print_derived">
+            <option value="off">off</option>
+            <option value="on">on</option>
+          </select>
+          <div style="display: inline-block; width: 80px; text-align: center;">max&nbsp;answers</div>
+          <input type="text" class="form-control" id="maxanswers" value="" style="width: 55px"
+                 placeholder="all"></input>
+          <div style="display: inline-block; width: 105px; text-align: center;">confidence&nbsp;limit</div>
+          <input type="text" class="form-control" id="confidence" value="" style="width: 55px"
+                 placeholder="default"></input>
+          <p>
+          <textarea class="form-control" id="strategy" spellcheck="false"
+           style="height: 80px; width:100%; margin-bottom: 20px; margin-top: 15px;"
+           placeholder="Optional search strategy as json text (see the strategy reference)"></textarea>
+        </div>
+      </div>
+    </div>
+    <p>
+    </div>
+
+<p>
+<div id="input_notes"></div>
+<p>
+<h2>Result:</h2>
+
+<div class="container">
+  <div class="row">
+    <div class="col-md-12 wblock wblock1">
+        <div class="wiblock result_wiblock">
+          <div id="result" class="result"></div>
+        </div>
+    </div>
+  </div>
+</div>
+<p>
+  <div id="proof_notes"></div>
+<p>
+
+<!-- syntax description is initially hidden -->
+
+<div id="syntax" style="display: none">
+
+<button onclick="gid('syntax').style.display='none'; return false;"
+style="margin-top: 20px;margin-bottom: 0px;"
+class="btn btn-small btn-default">Hide syntax</button>
+
+<div class="container">
+  <div class="row">
+     <div class="col-md-12 wblock wblock1">
+      <div class="wiblock wiblock_full">
+
+<h4>Syntax in brief</h4>
+<p>Statements end with a period. <code>%</code> starts a line comment,
+<code>/* ... */</code> a block comment. Uppercase names are variables,
+lowercase names are constants, predicates and functions.</p>
+<table class="table table-condensed">
+<tr><td><code>bird(b).</code></td>
+    <td>a fact</td></tr>
+<tr><td><code>-bird(airplane).</code></td>
+    <td>a negative fact: evidence against</td></tr>
+<tr><td><code>0.8::rain(today).</code></td>
+    <td>a fact believed with confidence 0.8</td></tr>
+<tr><td><code>flies(X) :- bird(X), healthy(X).</code></td>
+    <td>a rule: head <code>:-</code> conditions</td></tr>
+<tr><td><code>0.7::rain(X) :- dark_clouds(X).</code></td>
+    <td>an uncertain rule</td></tr>
+<tr><td><code>flies(X) :- bird(X), unless(-flies(X), 2).</code></td>
+    <td>a default rule with priority 2: applies unless
+        <code>-flies(X)</code> can be argued</td></tr>
+<tr><td><code>male(X) ; female(X) :- person(X).</code></td>
+    <td>alternative conclusions (or)</td></tr>
+<tr><td><code>:- penguin(X), flies(X).</code></td>
+    <td>a constraint: these cannot hold together</td></tr>
+<tr><td><code>f(a) = g(b).&nbsp;&nbsp;a != b.</code></td>
+    <td>equality and inequality</td></tr>
+<tr><td><code>few(P) :- apples(P, N), N &lt; 5.</code></td>
+    <td>arithmetic: <code>+ - * /</code> and
+        <code>&lt; &gt; =&lt; &gt;=</code></td></tr>
+<tr><td><code>query(flies(X)).</code></td>
+    <td>the question; a variable asks for a value,
+        a ground query for a truth assessment</td></tr>
+</table>
+<p>This is the GKP notation. The same text box also accepts gk's JSON
+notation, the GKS notation and TPTP clause form &mdash; the language is
+detected automatically; see examples 16&ndash;18 in the <i>more examples</i>
+menu. There is no Prolog-style cut, <code>is</code> or negation as failure:
+use explicit negation or <code>unless</code>. Full reference:
+<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/input_languages.md">input languages</a>.</p>
+
+</div></div></div></div>
+
+</div><!-- /syntax -->
+
+<div class="container">
+  <div class="row">
+     <div class="col-md-12 wblock wblock1">
+      <div class="wiblock wiblock_full">
+<p style="margin-top: 25px; color: #666;">
+The reasoner running on this page is
+<a href="https://github.com/tammet/gkreasoner">gk</a>, compiled to
+WebAssembly. Native binaries for Linux, macOS and Windows are listed on the
+<a href="download.html">download page</a>. Examples and documentation are in
+the
+<a href="https://github.com/tammet/gkreasoner">gkreasoner repository</a>.
+gk is built on the <a href="https://github.com/tammet/gkc">gkc</a> prover
+core. gk is developed by Tanel Tammet, with database technology contributions
+by Priit Järv and conceptual ideas by Tanel Tammet, Priit Järv, and Dirk
+Draheim.</p>
+</div></div></div></div>
+
+<!-- ================= modals ================= -->
+
+<div class="modal fade" id="whatModal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content modal_login">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal">
+            <span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+            <h4 class="modal-title" style="color: black;">What this solver does</h4>
+      </div>
+      <div class="modal-body">
+<p>gk is a first-order reasoner built on the
+<a href="index.html">gkc</a> theorem prover. It uses resolution proof search
+and adds:</p>
+<ul>
+<li><b>Confidences.</b> Any fact or rule can carry a confidence between 0 and
+1. A proof multiplies the confidences it uses; several independent proofs of
+the same answer are combined so that shared evidence is not counted twice.</li>
+<li><b>Evidence against.</b> The negation of a statement can have its own
+support. gk runs a separate search for the evidence against an answer and
+reports the net result, together with a four-part split into support,
+opposition, conflict and ignorance.</li>
+<li><b>Defaults and exceptions.</b> Rules with <code>unless</code> apply only
+when their exception cannot be argued. Competing defaults are resolved by
+priorities. A certain strict argument defeats a default. Candidate answers
+defeated by exceptions are shown as rejected answers with their proofs.</li>
+<li><b>Contradiction tolerance.</b> Opposing inputs produce conflict reported
+for the affected answers. JSON detail output can name contested premises.</li>
+</ul>
+<p>The reported confidence is an assessment of the proof evidence, not a
+probability calculated from a complete probability model. The algorithms are
+described in
+<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/how_gk_works.md">how gk works</a>.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="outputModal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content modal_login">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal">
+            <span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+            <h4 class="modal-title" style="color: black;">Reading the output</h4>
+      </div>
+      <div class="modal-body">
+<p>The first line states the overall result. Common values are
+<code>answer found</code>; <code>evidence below limit</code> (a proof was
+found below the confidence threshold); <code>no information</code> (neither
+side of a ground query was proved); <code>no answers found</code> (an open
+query produced no values); and <code>time limit, proof not found</code>.</p>
+<p>Each answer block contains:</p>
+<ul>
+<li><code>answer:</code> a value for the query variable, or
+<code>true</code>/<code>false</code> for a ground query;</li>
+<li><code>confidence:</code> the net degree of belief, 0 to 1;</li>
+<li><code>blockers:</code> for answers produced by default rules, the
+exception conditions the answer depends on;</li>
+<li><code>proof for</code> and, when relevant, <code>proof against</code>:
+numbered derivation steps. <code>in(name)</code> is an input statement,
+<code>mp(i, j)</code> a resolution step from earlier steps,
+<code>cumul(i, j)</code> a combination of independent proofs,
+<code>=</code> an equality step. The number at the end of each step is the
+confidence at that step;</li>
+<li><code>rejected answer:</code> a candidate defeated by exceptions or
+opposing evidence, shown with the proofs of both sides.</li>
+</ul>
+<p>With the <i>detail report</i> switched on (under Advanced), each answer
+also shows <code>support / conflict / ignorance</code> lines splitting the
+belief into the part supported only for, only against, claimed by both sides,
+and claimed by neither &mdash; the four parts sum to 1 &mdash; plus warning
+flags such as <code>CONTESTED</code>. JSON detail output can also include a
+list of conflict sources.</p>
+<p>JSON input produces JSON output; TPTP input produces TPTP-style output.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="confModal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content modal_login">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal">
+            <span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+            <h4 class="modal-title" style="color: black;">How confidences combine</h4>
+      </div>
+      <div class="modal-body">
+<p>Four rules cover most of what the examples show:</p>
+<ul>
+<li><b>Chaining multiplies.</b> A derivation using statements with
+confidences c1, c2, ... supports its conclusion with c1 &middot; c2 &middot;
+&hellip; (independence assumption).</li>
+<li><b>Independent proofs cumulate.</b> Two proofs of the same answer with
+supports s1 and s2 give 1 &minus; (1 &minus; s1)(1 &minus; s2), the noisy-or
+rule: the answer fails only if both fail.</li>
+<li><b>Shared evidence is not double-counted.</b> gk records which input
+statements each proof uses; only the non-shared parts of two proofs
+cumulate. Two proofs standing on the same uncertain fact are not treated as
+independent confirmation.</li>
+<li><b>Opposition nets.</b> Evidence against an answer subtracts from the
+evidence for it; the contested part is reported as conflict.</li>
+</ul>
+<p>The reported numbers assess proof evidence under these rules. gk does not
+build a complete probability model of the knowledge base.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="defaultsModal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content modal_login">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal">
+            <span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+            <h4 class="modal-title" style="color: black;">Defaults, exceptions and priorities</h4>
+      </div>
+      <div class="modal-body">
+<p><code>unless(condition, priority)</code> in a rule body turns the rule into
+a default. gk first derives the conclusion as a candidate carrying the
+blocker, then searches for arguments for the blocking condition:</p>
+<ul>
+<li>no blocking proof found &mdash; the answer stands, and its blockers are
+listed;</li>
+<li>a confidence-1 strict argument (no <code>unless</code> in its own
+support) &mdash; the candidate is defeated and shown as a rejected answer;</li>
+<li>an argument from a <i>higher-priority</i> default &mdash; likewise
+defeated;</li>
+<li>an argument from a <i>lower-priority</i> default &mdash; the argument is
+ignored;</li>
+<li>an <i>equal-priority</i> argument &mdash; a standoff: gk commits to
+neither side (the Nixon diamond example).</li>
+<li>uncertain evidence for the exception nets against the answer's confidence
+without defeating it outright (the exception example).</li>
+</ul>
+<p>Priorities are numbers, higher wins. In larger knowledge bases priorities
+can also be derived from a taxonomy &mdash; a more specific class defeats a
+more general one &mdash; using <code>tax(class)</code> in place of a number;
+this needs auxiliary data files and is not enabled on this page.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= hidden example texts ================= -->
+
+<div hidden>
+
+<div id="example_cs1_input_notes"><h3>Example 1: facts and rules</h3>
+<p>Each statement ends with a period. Lowercase names such as
+<code>polly</code> are constants, predicates, or functions; uppercase names
+such as <code>X</code> are variables. The first rule says that every penguin is
+a bird, and the second that every bird is an animal.</p>
+<p>The <code>query</code> statement asks the question. Since it contains the
+variable <code>X</code>, gk returns each value for which
+<code>animal(X)</code> can be derived.</p>
+<p>A percent sign <code>%</code> starts a line comment; <code>/* ... */</code>
+comments work as well. The order of statements does not matter.</p></div>
+<pre><code id="example_cs1_input_code">penguin(polly).
+
+bird(X) :- penguin(X).
+animal(X) :- bird(X).
+
+query(animal(X)).
+
+% Which animal can be derived from these facts and rules?</code></pre>
+<div id="example_cs1_proof_notes">
+<p>The answer is <code>polly</code> with confidence 1. The proof applies the two
+rules to the input fact.</p>
+<p>The <code>proof for</code> block lists numbered derivation steps.
+<code>in(frm_1)</code> marks an input statement;
+<code>mp(1, 2)</code> means the step was derived from steps 1 and 2 by
+<a href="https://en.wikipedia.org/wiki/Resolution_(logic)">resolution</a>.
+The number after each step name is the confidence of that step.</p>
+<p>The internal literal <code>$ans(X)</code> collects the answer value: the last
+step contains <code>$ans(polly)</code>.</p></div>
+
+<div id="example_cs2_input_notes"><h3>Example 2: confidences</h3>
+<p>A number between 0 and 1 before <code>::</code> states how strongly the
+statement is believed. A statement without the prefix has confidence 1.</p>
+<p>Both the facts and the rule can be uncertain. gk computes the confidence of
+the answer from the confidences of everything used in the proof.</p></div>
+<pre><code id="example_cs2_input_code">0.8::dark_clouds(today).
+0.7::rain(X) :- dark_clouds(X).
+
+query(rain(today)).
+
+% There is uncertain evidence for dark clouds and an uncertain
+% rule connecting dark clouds with rain.</code></pre>
+<div id="example_cs2_proof_notes">
+<p>The answer is <code>true</code> with confidence
+<code>0.56 = 0.8 * 0.7</code>. A proof chain multiplies the confidences of
+the statements it uses, under the assumption that their uncertainties are
+independent.</p></div>
+
+<div id="example_cs3_input_notes"><h3>Example 3: several sources</h3>
+<p>Two independent sources support the same forecast with different
+confidences. Their combined support is greater than either source alone.</p></div>
+<pre><code id="example_cs3_input_code">0.5::rain(today).
+0.6::rain(today).
+
+query(rain(today)).
+
+% Two independent forecasts both predict rain today,
+% one with confidence 0.5 and the other with 0.6.
+% What is the combined confidence?</code></pre>
+<div id="example_cs3_proof_notes">
+<p>The combined confidence is <code>0.8</code>. For independent evidence gk
+combines the two proofs as
+<code>1 - (1 - 0.5) * (1 - 0.6) = 0.8</code>: the answer fails only if both
+sources fail. This is the same "noisy-or" rule used in probabilistic logic
+programming.</p>
+<p>The proof shows both derivations and a <code>cumul</code> step which merges
+them. Importantly, gk records which input facts each proof uses and merges this
+way only proofs based on different evidence: see the "shared evidence" example.</p></div>
+
+<div id="example_cs4_input_notes"><h3>Example 4: for and against</h3>
+<p>The minus sign is explicit negation: <code>-flies(a)</code> is evidence that
+<code>a</code> does not fly, not an absence of evidence. Here both the
+statement and its negation have direct support. gk retains and assesses both
+sides.</p>
+<p>The <i>detail report</i> option (in Advanced) is switched on for this
+example: it adds a breakdown of the evidence to the answer.</p></div>
+<pre><code id="example_cs4_input_code">0.7::flies(a).
+0.4::-flies(a).
+
+query(flies(a)).
+
+% Evidence for and against the same statement:
+% 70% belief that a flies, 40% belief that it does not.</code></pre>
+<div id="example_cs4_proof_notes">
+<p>The answer <code>true</code> has confidence <code>0.3</code>: the positive
+evidence 0.7 minus the part 0.4 contested by the negative evidence.</p>
+<p>The detail lines split the total belief into four parts which sum to 1:</p>
+<pre><code>support: 0.3 for, 0 against
+conflict: 0.4   ignorance: 0.3</code></pre>
+<p><i>Support</i> is the uncontested evidence on each side. <i>Conflict</i> is
+the part claimed by both sides at once. <i>Ignorance</i> is the part supported
+by neither side. The <code>CONTESTED</code> flag warns that the answer has
+real evidence against it, not merely weak evidence for it.</p>
+<p>Both the <code>proof for</code> and the <code>proof against</code> are
+printed, so you can see exactly what supports each side.</p></div>
+
+<div id="example_cs5_input_notes"><h3>Example 5: rule chains</h3>
+<p>Uncertain rules with variables act as weak general tendencies: anybody
+smokes with confidence 0.3, any two people are friends with confidence 0.1,
+friendship is roughly symmetric, and a susceptible person with a smoking
+friend has an extra 0.2 tendency to smoke. On top of these there are two
+certain facts about <code>chris</code> and <code>sam</code>.</p>
+<p>The question is how strongly the rules and facts together support
+<code>smokes(sam)</code>.</p></div>
+<pre><code id="example_cs5_input_code">% Social smoking, following a classical example from
+% probabilistic logic programming.
+
+0.3::smokes(X).
+0.1::friends(X, Y).
+0.9::friends(Y, X) :- friends(X, Y).
+0.6::susceptible(X).
+0.2::smokes(X) :- susceptible(X), friends(X, Y), smokes(Y).
+
+friends(chris, sam).
+smokes(chris).
+
+query(smokes(sam)).</code></pre>
+<div id="example_cs5_proof_notes">
+<p>The confidence is <code>0.3764</code>. Several different derivations
+support the answer: the base tendency (0.3), and a chain through the certain
+facts &mdash; sam is a friend of chris (via symmetry, 0.9), chris smokes, sam
+may be susceptible (0.6) &mdash; contributing on top of the base rate. gk finds
+the separate proofs and cumulates them, multiplying confidences along each
+chain and combining the chains with the noisy-or rule.</p>
+<p>The <code>cumul</code> steps in the proof show where the independent
+derivations are merged.</p></div>
+
+<div id="example_cs6_input_notes"><h3>Example 6: shared evidence</h3>
+<p>Two proofs support <code>g(x)</code>: one through <code>fa</code> and
+<code>fb</code> (confidence 0.72), another through <code>fa</code> and
+<code>fc</code> (confidence 0.63). Combining them naively with the noisy-or
+rule would give <code>1 - 0.28 * 0.37 = 0.896</code>.</p>
+<p>But that would be wrong: both proofs stand on the <i>same</i> uncertain
+fact <code>fa(x)</code>. If <code>fa(x)</code> fails, both proofs fail
+together, so the two proofs are not independent.</p></div>
+<pre><code id="example_cs6_input_code">0.9::fa(x).
+0.8::fb(x).
+0.7::fc(x).
+
+g(X) :- fa(X), fb(X).
+g(X) :- fa(X), fc(X).
+
+query(g(x)).
+
+% Two different rules derive g(x), but both depend
+% on the same uncertain fact fa(x).</code></pre>
+<div id="example_cs6_proof_notes">
+<p>gk returns <code>0.846</code>, not 0.896. It records which input facts each
+proof uses, notices that <code>fa(x)</code> is shared, and combines only the
+non-shared parts independently:
+<code>0.9 * (1 - (1 - 0.8) * (1 - 0.7)) = 0.9 * 0.94 = 0.846</code>.</p>
+<p>Replacing <code>fa(X)</code> in the second rule with an independent
+<code>fd(X)</code> of confidence 0.9 removes the overlap and changes the result
+to 0.8964.</p></div>
+
+<div id="example_cs7_input_notes"><h3>Example 7: contested premises</h3>
+<p>Here the conflict is not about the queried statement itself but about a
+premise used to derive it: <code>bird(a)</code> has evidence both for (0.5)
+and against (0.2).</p>
+<p>The detail report is switched on to show how gk flags this.</p></div>
+<pre><code id="example_cs7_input_code">0.5::bird(a).
+0.2::-bird(a).
+
+0.9::flies(X) :- bird(X).
+
+query(flies(a)).
+
+% The premise bird(a) is itself contested:
+% how does that affect the derived conclusion?</code></pre>
+<div id="example_cs7_proof_notes">
+<p>The conclusion gets confidence <code>0.27</code>: the flying rule (0.9)
+applied to the net support of its premise. The
+<code>flags: CONTESTED</code> line marks that a premise of the proof has
+opposing evidence.</p>
+<p>JSON detail output can also list contested atoms as
+<code>conflict_sources</code>; see the "conflict detail" example under
+<i>more examples</i>.</p></div>
+
+<div id="example_cs8_input_notes"><h3>Example 8: defaults</h3>
+<p>The <code>unless(-flies(X), 2)</code> condition makes this a <i>default
+rule</i>: derive <code>flies(X)</code> from <code>bird(X)</code> unless an
+argument for <code>-flies(X)</code> blocks it. The number 2 is the priority of
+the default, used when defaults compete; see the later examples.</p>
+<p>This states that birds normally fly without claiming that every bird
+flies.</p></div>
+<pre><code id="example_cs8_input_code">bird(a).
+bird(b).
+
+flies(X) :- bird(X), unless(-flies(X), 2).
+
+query(flies(X)).
+
+% Birds fly by default: the rule applies unless
+% it can be shown that the bird does not fly.</code></pre>
+<div id="example_cs8_proof_notes">
+<p>Both <code>a</code> and <code>b</code> are answers with confidence 1: there
+is no evidence against either of them flying, so the defaults go through.</p>
+<p>Each answer records its <code>blockers</code> &mdash; the exception
+condition it depends on, e.g. <code>unless(-flies(b), 2)</code>. The answer is
+conditional on no such blocker being derivable: gk searched for evidence of
+the exceptions and found none.</p>
+<p>Try adding the fact <code>-flies(a).</code> and solving again:
+<code>a</code> disappears from the answers, <code>b</code> remains.</p></div>
+
+<div id="example_cs9_input_notes"><h3>Example 9: an exception</h3>
+<p>The new fact <code>0.9::-flies(a)</code> is evidence for the exception of
+the default, but it is uncertain: 0.9 rather than 1.</p></div>
+<pre><code id="example_cs9_input_code">bird(a).
+bird(b).
+0.9::-flies(a).
+
+flies(X) :- bird(X), unless(-flies(X), 2).
+
+query(flies(X)).
+
+% As before, but now there is 90%-confidence evidence
+% that a does not fly.</code></pre>
+<div id="example_cs9_proof_notes">
+<p><code>b</code> still flies with confidence 1. For <code>a</code> the
+uncertain exception does not eliminate the default outright; it nets against
+it: the answer <code>a</code> remains with confidence
+<code>1 - 0.9 = 0.1</code>.</p>
+<p>The output shows both the <code>proof for</code> (the default) and the
+<code>proof against</code> (the exception evidence) for <code>a</code>.</p>
+<p>Try changing <code>0.9</code> to <code>1</code>: with a certain exception
+the answer <code>a</code> is fully defeated.</p></div>
+
+<div id="example_cs10_input_notes"><h3>Example 10: penguins</h3>
+<p>Two default rules compete: birds fly (priority 3) and objects do not fly
+(priority 2). Since every bird is an object, both defaults apply to every
+bird. The higher priority number wins, so for ordinary birds the flying
+default defeats the non-flying one.</p>
+<p>The penguin rule <code>-flies(X) :- penguin(X)</code> has no
+<code>unless</code>: it is strict, and strict conclusions override any
+default.</p></div>
+<pre><code id="example_cs10_input_code">bird(b).
+penguin(p).
+
+bird(X)   :- penguin(X).
+object(X) :- bird(X).
+-flies(X) :- penguin(X).
+
+flies(X)  :- bird(X),   unless(-flies(X), 3).
+-flies(X) :- object(X), unless(flies(X), 2).
+
+query(flies(X)).
+
+% Birds fly, penguins are birds, penguins
+% do not fly. Also: objects in general do not fly.</code></pre>
+<div id="example_cs10_proof_notes">
+<p>The bird <code>b</code> flies with confidence 1: its priority-3 default
+defeats the priority-2 object default (the printed <code>proof against</code>
+shows the defeated attempt).</p>
+<p>The penguin <code>p</code> is printed as a <i>rejected answer</i> with
+confidence against 1: the flying default produced a candidate, but the strict
+penguin rule defeats it regardless of priorities.</p>
+<p>The rejected-answer block records the defeated candidate and its opposing
+proof.</p></div>
+
+<div id="example_cs11_input_notes"><h3>Example 11: the Nixon diamond</h3>
+<p>Two defaults of <i>equal</i> priority support opposite conclusions about
+the same person: the quaker rule supports pacifism and the republican rule
+supports its negation.</p>
+<p>The query asks about a further consequence of pacifism.</p></div>
+<pre><code id="example_cs11_input_code">quaker(n).
+republican(n).
+
+pacifist(X)  :- quaker(X),     unless(-pacifist(X), 2).
+-pacifist(X) :- republican(X), unless(pacifist(X), 2).
+
+dislikeswar(X) :- pacifist(X).
+
+query(dislikeswar(X)).
+
+% Quakers are pacifists; republicans are not.
+% Nixon is both. Does he dislike war?</code></pre>
+<div id="example_cs11_proof_notes">
+<p>gk reports <code>result: evidence below limit</code> and shows
+<code>n</code> only as a rejected answer with confidence against 0 and the
+<code>CONTESTED</code> flag. Neither default can defeat the other &mdash; the
+priorities are equal &mdash; so the margin between them is zero: gk commits
+to neither <code>pacifist(n)</code> nor its negation, and the downstream
+conclusion is left undecided (ignorance 1 in the detail lines).</p>
+<p>Try raising the quaker default to priority 3: then pacifism wins and
+<code>n</code> becomes a real answer with confidence 1.</p></div>
+
+<div id="example_cs12_input_notes"><h3>Example 12: a story about situations</h3>
+<p>The story: <i>"A man entered a room containing a table. He wore a black
+suit. Then the man left the room."</i> The question: in which situations is
+the man in the room?</p>
+<p>This example is written in gk's native JSON syntax (see the notation
+examples under <i>more examples</i>) and shows a typical commonsense encoding
+of time: situations <code>sit1, sit2, sit3</code> connected by events, with
+<i>frame rules</i> stating that facts persist from one situation to the next
+by default &mdash; unless an event changes them.</p></div>
+<pre><code id="example_cs12_input_code">// Story: 
+// "A man entered a room containing a table. He wore a black suite. Then the man left the room". 
+
+// We have three situations: s1, s2, s3:
+// s1: nothing initially known
+// s2: man has entered the room
+// s3: man has exited the room
+
+// New situations are generated by events.
+
+// We generate new unique identifiers room1, sit1, table1, man1, sit2, sit3 etc
+// while encoding the story to logic.
+
+// The encoder has to understand that the room and the man is the same in all
+// situations and thus use the same identifiers man1 and room1 in all situations.
+
+//  * Event 1: A man entered a room containing a table. 
+
+[
+
+// initial status generated by the first sentence  
+
+{"@logic":["isa","room1","room"]},
+{"@logic":["isa","table1","table"]},
+{"@logic":["in","table1","room1","sit1"]},
+
+{"@logic":["isa","event1","event"]},  
+{"@logic":["event_type","event1","enter"]},
+{"@logic":["event_actor","event1","man1"]},
+{"@logic":["event_target","event1","room1"]},
+
+{"@logic":["isa","man1","man"]},
+{"@logic":["situationfrom","event1","sit1"]},
+
+// a default "unlikely anything is inside" rule for the initial situation
+
+{"@logic":[["-in","?:X","?:Y","sit1"], ["$block",["$","in"],["in","?:X","?:Y","sit1"]]],
+ "@confidence": 90},
+
+    
+// * Situation 2: generated by the entering event.
+
+{"@logic":["situationto","event1","sit2"]},
+{"@logic":["nextsituation","sit1","sit2"]},
+
+//{"@logic":["in","man1","room1","sit2"]}, // this is generated by the entering rule
+{"@logic":["in",["clothes","man1","sit1"],"room1","sit2"]},
+{"@logic":["in",["carriedstuff","man1","sit1"],"room1","sit2"]},
+
+/* // we use a generic rule instead
+{"@logic":[["in","?:X","?:Y","sit1"],
+           "=&gt;",
+           [["in","?:X","?:Y","sit2"],"|",["$block",["$","in"],["$not",["in","?:X","?:Y","sit2"]]]]]},
+
+{"@logic":[["-in","?:X","?:Y","sit1"],
+           "=&gt;",
+           [["-in","?:X","?:Y","sit2"],"|",["$block",["$","in"],["in","?:X","?:Y","sit2"]]]]},
+*/
+
+// * Situation 2 statement: He wore a black suit.
+
+{"@logic":["color",["clothes","man1","sit2"],"#:black","sit2"]}, 
+   // #:black says that #:black is not equal to #:red, #:dog, #:man1 etc: anything different
+
+{"@logic":["clothingtype",["clothes","man1","sit2"],"suite","sit2"]},
+   // no question examples for clothingtype: making questions is an exercise :)
+
+
+// * Event 2: Then the man left the room.
+
+{"@logic":["isa","event2","event"]},  
+{"@logic":["event_type","event2","leave"]},
+{"@logic":["event_actor","event2","man1"]},
+{"@logic":["event_target","event2","room1"]},
+
+{"@logic":["situationfrom","event2","sit2"]},
+{"@logic":["situationto","event2","sit3"]},
+{"@logic":["nextsituation","sit2","sit3"]},
+
+/* // we use a generic rule instead
+{"@logic":[["in","?:X","?:Y","sit2"],
+           "=&gt;",
+           [["in","?:X","?:Y","sit3"],"|",["$block",["$","in"],["$not",["in","?:X","?:Y","sit3"]]]]]},
+
+{"@logic":[["-in","?:X","?:Y","sit2"],
+           "=&gt;",
+           [["-in","?:X","?:Y","sit3"],"|",["$block",["$","in"],["in","?:X","?:Y","sit3"]]]]},
+*/
+
+// rules for entering and exiting
+
+
+{"@logic":[["&amp;",["isa","?:E","event"],["event_type","?:E","enter"],["event_actor","?:E","?:A"],["event_target","?:E","?:T"],
+                ["situationto","?:E","?:S"]],
+           "=&gt;",
+           ["in","?:A","?:T","?:S"]]},
+
+
+{"@logic":[["&amp;",["isa","?:E","event"],["event_type","?:E","leave"],["event_actor","?:E","?:A"],["event_target","?:E","?:T"],
+            ["situationto","?:E","?:S"]],
+       "=&gt;",
+       ["-in","?:A","?:T","?:S"]]},
+
+// rule for default persistance of being inside something
+
+{"@logic":[[["in","?:X","?:Y","?:S1"],"&amp;",["nextsituation","?:S1","?:S2"]],
+          "=&gt;",
+          [["in","?:X","?:Y","?:S2"],"|",["$block",["$","in"],["$not",["in","?:X","?:Y","?:S2"]]]]]},
+
+// rules for default persistance of clothes
+
+
+{"@logic":[["&amp;",[["clothes","?:X","?:S1"],"=","?:C1"],["nextsituation","?:S1","?:S2"]],
+            "=&gt;",
+           [["=",["clothes","?:X","?:S2"],"?:C1"],"|",["$block",["$","color"],["$not",["=",["clothes","?:X","?:S2"],"?:C1"]]]]] },
+
+// rules for default persistance of color 
+
+{"@logic":[["&amp;",["color","?:X","?:C","?:S1"],["nextsituation","?:S1","?:S2"]],
+           "=&gt;",
+           [["color","?:X","?:C","?:S2"],"|",["$block",["$","color"],["$not",["color","?:X","?:C","?:S2"]]]]] },
+
+// rules for uniqueness of color
+
+//{"@logic": ["-=","black","red"]}, // we do not need this if we use #:black and #:red
+
+{"@logic": [[["color","?:X","?:C","?:S"],"&amp;",["!=","?:C","?:C1"]],
+             "=&gt;",
+            ["-color","?:X","?:C1","?:S"]]},
+
+// useless rules generating infinite amounts of stuff to avoid simple termination
+/*    
+{"@logic":[["-isa","?:X","?:Y"],["isa",["foo","?:X"],"?Y"]]},
+{"@logic":[["-isa",["foo","?:X"],"?:Y"],["isa","?:X","?Y"]]},
+*/
+
+// default rule for persistance of not being inside
+
+{"@logic":[[["-in","?:X","?:Y","?:S1"],"&amp;",["nextsituation","?:S1","?:S2"]],
+   "=&gt;",
+   [["-in","?:X","?:Y","?:S2"],"|",["$block",["$","in"],["in","?:X","?:Y","?:S2"]]]]},
+
+// some questions to try
+
+//{"@question": ["isa","?:X","man"]}
+//{"@question": ["in","table1","room1","sit3"]}
+//{"@question": ["in","chair1","room1","sit3"]}
+// {"@question": ["in","man1","room1","sit2"]}
+//{"@question": ["-in","man1","room1","sit1"]}  
+//{"@question": ["-in","man1","room1","sit2"]}
+{"@question": ["in","man1","room1","?:S"]}  // in which situations is there a man in the room?
+//{"@question": ["-in","man1","room1","?:S"]}
+//{"@question": ["=",["clothes","man1","sit2"],["clothes","man1","sit3"]]}
+//{"@question": ["color",["clothes","man1","sit3"],"#:red","sit3"]}
+
+]</code></pre>
+<div id="example_cs12_proof_notes">
+<p>Because the input is in JSON syntax, the output is JSON as well. The man is
+in the room in <code>sit2</code> (after entering): a real answer with
+confidence 1.</p>
+<p><code>sit3</code> (after leaving) appears among the rejected answers: the
+persistence default suggested he might still be in the room, but the leave
+event defeats it. <code>sit1</code> is rejected as well, in the other
+direction: persistence backwards from <code>sit2</code> is defeated since
+the enter event is exactly what put him there.</p>
+<p>This defeat of persistence by known events is the classical
+<a href="https://en.wikipedia.org/wiki/Frame_problem">frame problem</a>
+handled with defaults.</p></div>
+
+<div id="example_cs13_input_notes"><h3>Example 13: arithmetic</h3>
+<p>Ground arithmetic (<code>3 + 4 &lt; 10</code> etc) is evaluated during
+proof search. To find a value for a variable in an arithmetic condition, gk
+uses bounded enumeration of candidate values. Automatic selection enables
+this when required; the preset strategy shows the corresponding
+<code>arith_instantiation</code> setting.</p></div>
+<pre><code id="example_cs13_input_code">0.8::johnhad(X) :- X + 2 = 10.
+
+query(johnhad(X)).
+
+% John had some apples. Receiving 2 more made 10.
+% How many did he have before? Note the strategy field
+% under Advanced: it shows the arithmetic setting used
+% to find a numeric value for X.</code></pre>
+<div id="example_cs13_proof_notes">
+<p>The answer is <code>8</code> with confidence 0.8 (the rule's own
+confidence). The proof shows the instantiation step where <code>X = 8</code>
+makes <code>8 + 2 = 10</code> true.</p>
+<p>This is bounded search for satisfying values, not equation solving: it
+handles one unknown conservatively (<code>arith_instantiation: 1</code>), and
+mode 2 also tries selected two-variable cases.</p></div>
+
+<div id="example_cs14_input_notes"><h3>Example 14: equality reasoning</h3>
+<p>Group-theory style axioms in JSON notation: an inverse
+(<code>m(X, i(X)) = e</code>), a right identity and associativity. The
+question asks whether <code>m(e, c) = c</code> follows &mdash; note that only
+the <i>right</i> identity is given, so the left identity has to be derived.</p>
+<p>gk handles equality with dedicated inference rules (paramodulation), the
+same machinery used by classical theorem provers.</p></div>
+<pre><code id="example_cs14_input_code">[
+[["m","?:X",["i","?:X"]], "=", "e"],
+[["m","?:X","e"], "=", "?:X"],
+[["m","?:X",["m","?:Y","?:Z"]], "=", ["m",["m","?:X","?:Y"],"?:Z"]],
+{"@question":[["m","e","c"], "=", "c"]}
+]</code></pre>
+<div id="example_cs14_proof_notes">
+<p>The answer is <code>true</code> with confidence 1. The <code>=</code> steps
+in the proof are equality replacements: the derivation rewrites
+<code>m(e, c)</code> using the axioms until it reduces to <code>c</code>.</p></div>
+
+<div id="example_cs15_input_notes"><h3>Example 15: conflict sources in detail</h3>
+<p>Several sources give evidence about whether <code>a</code> is a bird
+&mdash; two for, one against &mdash; and rules derive flying from birdness in
+both directions. The detail report (switched on for this example) names which
+atom the conflict comes from.</p></div>
+<pre><code id="example_cs15_input_code">[
+{"@name":"a1","@confidence":90,"@logic":["bird","a"]},
+{"@name":"a2","@confidence":80,"@logic":["bird","a"]},
+{"@name":"na2","@confidence":70,"@logic":["-bird","a"]},
+{"@name":"f1","@confidence":90,"@logic":[["-bird","?:X"],["flies","?:X"]]},
+{"@name":"f2","@confidence":90,"@logic":[["bird","?:X"],["-flies","?:X"]]},
+{"@name":"q","@question":["flies","?:X"]}
+]</code></pre>
+<div id="example_cs15_proof_notes">
+<p>The answer has confidence <code>0.252</code> and its detail block lists</p>
+<pre><code>"conflict_sources": [{"atom": ["bird","a"], "conflict": 0.7000}]</code></pre>
+<p>naming the contested premise and the size of the conflict on it: the two
+positive sources for <code>bird(a)</code> cumulate to 0.98, the negative
+source claims 0.7 of that mass. The <code>CONTESTED</code> flag and the
+conflict-source list identify the affected premise.</p></div>
+
+<div id="example_cs16_input_notes"><h3>Example 16: JSON notation</h3>
+<p>The weather example is written in gk's
+<a href="https://github.com/tammet/json-ld-logic">JSON-LD-LOGIC</a> notation.
+The input is a JSON list, variables start with <code>?:</code>, and keys such
+as <code>@confidence</code> and <code>@question</code> attach metadata.</p>
+<p>This notation is intended for logic generated or consumed by programs.</p></div>
+<pre><code id="example_cs16_input_code">[
+  {"@logic": ["dark_clouds", "today"], "@confidence": 0.8},
+  {"@logic": [["-dark_clouds", "?:X"], ["rain", "?:X"]],
+   "@confidence": 0.7},
+  {"@question": ["rain", "today"]}
+]</code></pre>
+<div id="example_cs16_proof_notes">
+<p>When the input is JSON, the output is JSON as well: machine-readable
+answers with the same proofs as in the text format. Confidence 0.56 matches
+example 2 because the two inputs encode the same statements.</p></div>
+
+<div id="example_cs17_input_notes"><h3>Example 17: GKS notation</h3>
+<p>The third input notation: rules are written premises-first with
+<code>&amp;</code> and <code>=&gt;</code>, closer to textbook logic than the
+Prolog-style <code>:-</code> form. Everything else &mdash; confidences,
+queries, <code>unless</code> &mdash; is the same.</p>
+<p>gk detects the notation automatically from the input text, so all the
+notations work in this same text box.</p></div>
+<pre><code id="example_cs17_input_code">% Weather example in premise-to-consequence GKS notation.
+
+0.8 :: dark_clouds(today).
+0.7 :: dark_clouds(X) =&gt; rain(X).
+
+query(rain(today)).</code></pre>
+<div id="example_cs17_proof_notes">
+<p>The answer is true with confidence 0.56, as in examples 2 and 16. All
+three inputs are translated to the same internal logic before proof search.</p></div>
+
+<div id="example_cs18_input_notes"><h3>Example 18: TPTP notation</h3>
+<p>gk also reads clause-normal-form problems in the
+<a href="https://tptp.org">TPTP</a> notation used by automated theorem
+provers, extended with a <code>confidence(...)</code> annotation in the source
+list. This example asks which object does not fly.</p></div>
+<pre><code id="example_cs18_input_code">% The basic birds example in GKTPTP: standard TPTP CNF, with gk's metadata
+% (confidence, blockers) in the optional useful_info field. This is a 1:1
+% translation of bird_penguin.js and bird_penguin.gkp: gk converts all three
+% to the same JSON-LD-LOGIC before proving. See Doc/input_languages.md.
+%
+% The source field is left empty here (",,"), which gk's reader allows; a
+% file that must also parse under strict TPTP tools would write the filler
+% source "unknown" instead.
+
+cnf(b_is_a_bird, axiom,
+    ( bird(b) ) ).
+
+cnf(p_is_a_penguin, axiom,
+    ( penguin(p) ),,
+    [confidence(0.8)] ).
+
+cnf(penguins_are_birds, axiom,
+    ( ~ penguin(X) | bird(X) ) ).
+
+cnf(penguins_do_not_fly, axiom,
+    ( ~ penguin(X) | ~ flies(X) ),,
+    [confidence(0.9)] ).
+
+cnf(birds_fly, axiom,
+    ( ~ bird(X) | flies(X) ),,
+    [unless(~ flies(X), 2)] ).
+
+cnf(who_does_not_fly, conjecture,
+    ( ~ flies(X) ) ).</code></pre>
+<div id="example_cs18_proof_notes">
+<p>With TPTP input the answer comes back in the TPTP style: an
+<code>SZS status</code> line and the proof as an inference list. The penguin
+is reported with confidence against 0.08 below the default reporting limit,
+hence <code>GaveUp</code> with the rejected-answer support shown.</p>
+<p>The output notation follows the input notation.</p></div>
+
+<div id="example_cs19_input_notes"><h3>Example 19: defaults in JSON</h3>
+<p>The birds-and-penguins default in JSON notation. What GKP writes as
+<code>unless(-flies(X), 3)</code> appears here as an explicit
+<code>$block</code> literal inside the rule clause:
+<code>["$block", 3, ["$not", ["flies", "?:X"]]]</code>. The GKP and GKS
+<code>unless</code> forms are translated to exactly this.</p></div>
+<pre><code id="example_cs19_input_code">// A bird flies by default; penguins are explicitly non-flying birds.
+[
+  ["bird", "b1"],
+  ["penguin", "p1"],
+  [["penguin", "?:X"], "=&gt;", ["bird", "?:X"]],
+  [["-bird", "?:X"], ["flies", "?:X"],
+   ["$block", 3, ["$not", ["flies", "?:X"]]]],
+  [["penguin", "?:X"], "=&gt;", ["-flies", "?:X"]],
+  {"@question": ["flies", "b1"]}
+]
+
+/*
+Equivalent ASP rules for comparison:
+
+bird(b1).
+penguin(p1).
+bird(X) :- penguin(X).
+flies(X) :- bird(X), not -flies(X).
+-flies(X) :- penguin(X).
+*/</code></pre>
+<div id="example_cs19_proof_notes">
+<p><code>b1</code> flies (confidence 1); the answer lists its
+<code>$block</code> blocker just as the text format lists
+<code>blockers:</code>. Programs generating JSON-LD-LOGIC use this form
+directly.</p></div>
+
+<div id="example_cs20_input_notes"><h3>Example 20: blocks-world planning</h3>
+<p>A classical planning problem: blocks on a table, a robot arm, and a goal
+configuration. The plan is found as the answer term: a nested sequence of
+<code>pickup</code>/<code>putdown</code> actions transforming the initial
+situation.</p>
+<p>The time limit is preset to 30 seconds and max answers to 1 (one plan).
+The search runs off the page's main thread, so the page stays responsive;
+press Stop to abort it.</p></div>
+<pre><code id="example_cs20_input_code">% Blocks-world planning with situation terms and frame axioms.
+% Adapted from GKC's Examples/blocks.txt: goal(State) replaces the reserved
+% $ans(State) literal, and query(goal(State)) asks gk for a plan.
+
+% ----- initial situation s0 ------
+%
+%           c
+%   a   b   d
+%  ------------------------------
+
+holds(on(a,table),s0).
+holds(on(b,table),s0).
+holds(on(c,d),s0).
+holds(on(d,table),s0).
+holds(clear(a),s0).
+holds(clear(b),s0).
+holds(clear(c),s0).
+holds(empty,s0).
+holds(clear(table),State).
+
+% ---- difference of objects -----
+
+differ(X,Y) | -differ(Y,X).
+
+differ(a,b).
+differ(a,c).
+differ(a,d).
+differ(a,table).
+differ(b,c).
+differ(b,d).
+differ(b,table).
+differ(c,d).
+differ(c,table).
+differ(d,table).
+
+% ----- pickup rules ------
+
+holds(holding(X),do(pickup(X),State))
+    | -holds(empty,State)
+    | -holds(clear(X),State)
+    | -differ(X,table).
+
+holds(clear(Y),do(pickup(X),State))
+    | -holds(on(X,Y),State)
+    | -holds(clear(X),State)
+    | -holds(empty,State).
+
+% ---- frame axioms for pickup ----
+
+holds(on(X,Y),do(pickup(Z),State))
+    | -holds(on(X,Y),State)
+    | -differ(X,Z).
+
+holds(clear(X),do(pickup(Z),State))
+    | -holds(clear(X),State)
+    | -differ(X,Z).
+
+% ----- putdown rules -----
+
+holds(empty,do(putdown(X,Y),State))
+    | -holds(holding(X),State)
+    | -holds(clear(Y),State).
+
+holds(on(X,Y),do(putdown(X,Y),State))
+    | -holds(holding(X),State)
+    | -holds(clear(Y),State).
+
+holds(clear(X),do(putdown(X,Y),State))
+    | -holds(holding(X),State)
+    | -holds(clear(Y),State).
+
+% ---- frame axioms for putdown ----
+
+holds(on(X,Y),do(putdown(Z,W),State))
+    | -holds(on(X,Y),State).
+
+holds(clear(Z),do(putdown(X,Y),State))
+    | -holds(clear(Z),State)
+    | -differ(Z,Y).
+
+% Build the tower c on b on a. A goal answer is the situation term that
+% records the action sequence.
+
+-holds(on(b,a),State) | -holds(on(c,b),State) | goal(State).
+
+query(goal(State)).</code></pre>
+<div id="example_cs20_proof_notes">
+<p>The answer is a situation term: read it inside-out, starting from
+<code>s0</code>, as the sequence of actions of the plan. Finding the first
+plan takes several seconds.</p></div>
+
+<div id="example_cs21_input_notes"><h3>Example 21: logic generated from English</h3>
+<p>The input was machine-generated by the
+<a href="https://github.com/tammet/nlpsolver/tree/main/llmpipe">llmpipe</a>
+pipeline, which uses a large language model to translate English to gk logic:
+the story is <i>"Penguins are birds. Penguins cannot fly. Birds can fly. John
+is a penguin. John flies?"</i>. Each clause carries its source sentence in the
+<code>@nl</code> field.</p>
+<p>The encoding uses events with actors and types rather than a simple
+<code>flies(john)</code> atom, so that the same scheme covers arbitrary verbs,
+and a shared background knowledge base (loaded automatically for this
+example, not visible in the text box) supplies general axioms for taxonomy,
+part-whole relations, degrees, events and space.</p></div>
+<pre><code id="example_cs21_input_code">// Penguins are birds. Penguins do not fly. Birds fly. John is a penguin. John flies?
+// Expected answer: False
+// Uses the shared background knowledge base axioms_std.js.
+// Run from the repository root:
+//   ./bin/gk Examples/language/axioms_std.js Examples/language/penguin_default.js \
+//     -strategytext '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}' \
+//     -seconds 3 -confidence 0.1 -keepconfidence 0.1
+[
+{"@name": "sent_S1", "@logic": [["-isa", "penguin", "?:X"], ["isa", "bird", "?:X"]], "@nl": "Penguins are birds."},
+{"@name": "sent_S2", "@logic": [["-isa", "penguin", "?:X"], ["-isa", "activity", "?:E"], ["-has type", "?:E", "fly", ["$ctxt", "?:Fv8", "?:Fv7", "?:Fv5", "?:Fv6"]], ["-has actor", "?:E", "?:X", ["$ctxt", "?:Fv8", "?:Fv7", "?:Fv5", "?:Fv6"]], ["-capability", "?:E"]], "@nl": "Penguins cannot fly."},
+{"@name": "sent_S3", "@logic": [["-isa", "bird", "?:X"], ["isa", "activity", ["sk0", "?:X"]]], "@nl": "Birds can fly."},
+{"@name": "sent_S3", "@logic": [["-isa", "bird", "?:X"], ["has type", ["sk0", "?:X"], "fly", ["$ctxt", "?:Fv12", "?:Fv11", "?:Fv9", "?:Fv10"]]], "@nl": "Birds can fly."},
+{"@name": "sent_S3", "@logic": [["-isa", "bird", "?:X"], ["has actor", ["sk0", "?:X"], "?:X", ["$ctxt", "?:Fv12", "?:Fv11", "?:Fv9", "?:Fv10"]]], "@nl": "Birds can fly."},
+{"@name": "sent_S3", "@logic": [["-isa", "bird", "?:X"], ["capability", ["sk0", "?:X"]], ["$block", ["$", "bird", 1], ["$not", ["capability", ["sk0", "?:X"]]]]], "@confidence": 0.9, "@nl": "Birds can fly."},
+{"@name": "sent_S4", "@logic": ["isa", "penguin", "#:John 1"], "@nl": "John 1 is a penguin."},
+{"@name": "sent_S5", "@sourcetype": "question", "@logic": [["-$defq0"], ["isa", "activity", "sk1_activity"]]},
+{"@name": "sent_S5", "@sourcetype": "question", "@logic": [["-$defq0"], ["has type", "sk1_activity", "fly", ["$ctxt", "?:Fv22", "?:Fv21", "?:Fv15", "?:Fv16"]]]},
+{"@name": "sent_S5", "@sourcetype": "question", "@logic": [["-$defq0"], ["has actor", "sk1_activity", "#:John 1", ["$ctxt", "?:Fv24", "?:Fv23", "?:Fv15", "?:Fv16"]]]},
+{"@name": "sent_S5", "@sourcetype": "question", "@logic": [["-$defq0"], ["capability", "sk1_activity"]]},
+{"@name": "sent_S5", "@sourcetype": "question", "@logic": [["-isa", "activity", "?:E"], ["-has type", "?:E", "fly", ["$ctxt", "?:Fv28", "?:Fv27", "?:Fv15", "?:Fv16"]], ["-has actor", "?:E", "#:John 1", ["$ctxt", "?:Fv30", "?:Fv29", "?:Fv15", "?:Fv16"]], ["-capability", "?:E"], ["$defq0"]]},
+{"@name": "sent_S5", "@question": ["$defq0"]},
+{"@name": "sent_S1", "@sourcetype": "populate", "@logic": ["-isa", "penguin", "$some_not_penguin"], "@nl": "[population: from input]"},
+{"@name": "sent_S1", "@sourcetype": "populate", "@logic": ["isa", "bird", "$some_bird"], "@nl": "[population: from input]"},
+{"@name": "sent_S1", "@sourcetype": "populate", "@logic": ["-isa", "bird", "$some_not_bird"], "@nl": "[population: from input]"},
+{"@name": "sent_S2", "@sourcetype": "populate", "@logic": ["isa", "activity", "$some_activity"], "@nl": "[population: from input]"},
+{"@name": "sent_S2", "@sourcetype": "populate", "@logic": ["-isa", "activity", "$some_not_activity"], "@nl": "[population: from input]"},
+{"@name": "frm_syn", "@logic": [["-has type", "?:E", "fly", "?:Fv31"], ["has type", "?:E", "go", "?:Fv31"]], "@confidence": 0.52, "@nl": "[generated: frm_syn]"}
+]</code></pre>
+<div id="example_cs21_proof_notes">
+<p>The expected answer is <code>false</code>: John, a penguin, does not fly.
+The "birds can fly" sentence became a default (note the <code>$block</code>
+in its clause and its 0.9 confidence) which the strict penguin sentence
+defeats, exactly the penguin pattern from the earlier examples &mdash; only
+now produced automatically from English text.</p></div>
+
+<div id="example_cs22_input_notes"><h3>Example 22: a which-question from English</h3>
+<p>A wh-question produced by the same English-to-logic pipeline. The answer
+value comes back wrapped in <code>$ans</code>: a name like
+<code>#:John 1</code> is a specific individual mentioned in the text, while a
+value like <code>$some_fox</code> is an existential one &mdash; "a fox",
+introduced by the text without a name.</p></div>
+<pre><code id="example_cs22_input_code">// Squirrels can fly. Foxes cannot fly. Squirrels and foxes are animals. Which animal cannot fly?
+// Expected answer: A fox
+// Uses the shared background knowledge base axioms_std.js.
+// Run from the repository root:
+//   ./bin/gk Examples/language/axioms_std.js Examples/language/which_cannot_fly.js \
+//     -strategytext '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}' \
+//     -seconds 3 -confidence 0.1 -keepconfidence 0.1
+[
+{"@name": "sent_S1", "@logic": [["-isa", "squirrel", "?:X"], ["isa", "activity", ["sk0", "?:X"]]], "@nl": "Squirrels can fly."},
+{"@name": "sent_S1", "@logic": [["-isa", "squirrel", "?:X"], ["has type", ["sk0", "?:X"], "fly", ["$ctxt", "?:Fv4", "?:Fv3", "?:Fv1", "?:Fv2"]]], "@nl": "Squirrels can fly."},
+{"@name": "sent_S1", "@logic": [["-isa", "squirrel", "?:X"], ["has actor", ["sk0", "?:X"], "?:X", ["$ctxt", "?:Fv4", "?:Fv3", "?:Fv1", "?:Fv2"]]], "@nl": "Squirrels can fly."},
+{"@name": "sent_S1", "@logic": [["-isa", "squirrel", "?:X"], ["capability", ["sk0", "?:X"]], ["$block", ["$", "squirrel", 1], ["$not", ["capability", ["sk0", "?:X"]]]]], "@nl": "Squirrels can fly."},
+{"@name": "sent_S2", "@logic": [["-isa", "fox", "?:X"], ["-isa", "activity", "?:E"], ["-has type", "?:E", "fly", ["$ctxt", "?:Fv8", "?:Fv7", "?:Fv5", "?:Fv6"]], ["-has actor", "?:E", "?:X", ["$ctxt", "?:Fv8", "?:Fv7", "?:Fv5", "?:Fv6"]], ["-capability", "?:E"]], "@nl": "Foxes cannot fly."},
+{"@name": "sent_S3", "@logic": [["-isa", "squirrel", "?:X"], ["isa", "animal", "?:X"]], "@nl": "Squirrels are animals."},
+{"@name": "sent_S4", "@logic": [["-isa", "fox", "?:X"], ["isa", "animal", "?:X"]], "@nl": "Foxes are animals."},
+{"@name": "sent_S5", "@sourcetype": "question", "@logic": [["-$defq0", "?:X"], ["isa", "animal", "?:X"]]},
+{"@name": "sent_S5", "@sourcetype": "question", "@logic": [["-$defq0", "?:X"], ["-isa", "activity", "?:E"], ["-has type", "?:E", "fly", ["$ctxt", "?:Fv26", "?:Fv25", "?:Fv17", "?:Fv18"]], ["-has actor", "?:E", "?:X", ["$ctxt", "?:Fv28", "?:Fv27", "?:Fv17", "?:Fv18"]], ["-capability", "?:E"]]},
+{"@name": "sent_S5", "@sourcetype": "question", "@logic": [["-isa", "animal", "?:X"], ["isa", "activity", ["sk1", "?:X"]], ["$defq0", "?:X"]]},
+{"@name": "sent_S5", "@sourcetype": "question", "@logic": [["-isa", "animal", "?:X"], ["has type", ["sk1", "?:X"], "fly", ["$ctxt", "?:Fv36", "?:Fv35", "?:Fv17", "?:Fv18"]], ["$defq0", "?:X"]]},
+{"@name": "sent_S5", "@sourcetype": "question", "@logic": [["-isa", "animal", "?:X"], ["has actor", ["sk1", "?:X"], "?:X", ["$ctxt", "?:Fv40", "?:Fv39", "?:Fv17", "?:Fv18"]], ["$defq0", "?:X"]]},
+{"@name": "sent_S5", "@sourcetype": "question", "@logic": [["-isa", "animal", "?:X"], ["capability", ["sk1", "?:X"]], ["$defq0", "?:X"]]},
+{"@name": "sent_S5", "@question": ["$defq0", "?:X"]},
+{"@name": "sent_S1", "@sourcetype": "populate", "@logic": ["isa", "squirrel", "$some_squirrel"], "@nl": "[population: from input]"},
+{"@name": "sent_S1", "@sourcetype": "populate", "@logic": ["-isa", "squirrel", "$some_not_squirrel"], "@nl": "[population: from input]"},
+{"@name": "sent_S1", "@sourcetype": "populate", "@logic": ["isa", "activity", "$some_activity"], "@nl": "[population: from input]"},
+{"@name": "sent_S1", "@sourcetype": "populate", "@logic": ["-isa", "activity", "$some_not_activity"], "@nl": "[population: from input]"},
+{"@name": "sent_S2", "@sourcetype": "populate", "@logic": ["isa", "fox", "$some_fox"], "@nl": "[population: from input]"},
+{"@name": "sent_S2", "@sourcetype": "populate", "@logic": ["-isa", "fox", "$some_not_fox"], "@nl": "[population: from input]"},
+{"@name": "sent_S3", "@sourcetype": "populate", "@logic": ["isa", "animal", "$some_animal"], "@nl": "[population: from input]"},
+{"@name": "sent_S3", "@sourcetype": "populate", "@logic": ["-isa", "animal", "$some_not_animal"], "@nl": "[population: from input]"},
+{"@name": "frm_syn", "@logic": [["-has type", "?:E", "fly", "?:Fv43"], ["has type", "?:E", "go", "?:Fv43"]], "@confidence": 0.52, "@nl": "[generated: frm_syn]"}
+]</code></pre>
+<div id="example_cs22_proof_notes">
+<p>The answer here is such an existential individual. Population clauses
+(marked <code>@sourcetype: "populate"</code>) supply typical members for the
+classes mentioned in the text, so that questions about "a fox" or "some bird"
+have witnesses to find.</p></div>
+
+</div><!-- /hidden examples -->
+
+<!-- at-end-scripts -->
+
+<script>
+function handleFileSelect(evt) {
+  var files = evt.target.files;
+  for (var i = 0, f; f = files[i]; i++) {
+    var reader = new FileReader();
+    reader.onload = (function(theFile) {
+      return function(e) { gid('gkc_1_input').value = e.target.result; };
+    })(f);
+    reader.readAsText(f);
+  }
+}
+gid('files').addEventListener('change', handleFileSelect, false);
+</script>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/js/bootstrap.min.js"></script>
+</body>
+</html>
