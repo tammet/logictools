@@ -74,7 +74,14 @@ var EXAMPLES = {
   "21": { flags: ["-seconds","5","-print","10","-confidence","0.1","-strategytext",STRAT_NL], kb: true,
           expect: ['"answer": false'] },
   "22": { flags: ["-seconds","5","-print","10","-confidence","0.1","-strategytext",STRAT_NL], kb: true,
-          expect: ['["$ans","$some_fox"]'] }
+          expect: ['["$ans","$some_fox"]'] },
+  // 23 runs with -defaults plus the two taxonomy data files, which the page
+  // fetches as .gz and decompresses with DecompressionStream; here the same
+  // shipped .gz files are decompressed with zlib.
+  "23": { flags: ["-defaults","-seconds","5","-print","10"], kb: false, tax: true,
+          expect: ["answer: b1", "confidence: 0.5552", "unless(-isa(b1,human), tax(human))",
+                   "answer: h1", "confidence: 0.44",
+                   "rejected answer: a1", "confidence against: 1"] }
 };
 
 // Extract one example's input text from commonsense.html, undoing the same
@@ -99,10 +106,19 @@ if (process.argv[2] === "--run") {
   var files = ex.kb ? ["axioms_std.js", "input"] : ["input"];
   var args = files.concat(ex.flags);
   var kbText = ex.kb ? fs.readFileSync(KB, "utf8") : null;
+  var taxFiles = null;
+  if (ex.tax) {
+    var zlib = require("zlib");
+    taxFiles = [
+      ["gk_name_number.txt", zlib.gunzipSync(fs.readFileSync(path.join(DIR, "gk_name_number.txt.gz")))],
+      ["gk_taxonomy_packed.txt", zlib.gunzipSync(fs.readFileSync(path.join(DIR, "gk_taxonomy_packed.txt.gz")))]
+    ];
+  }
   process.argv = [process.argv[0], GKJS, "-version"];
   var M = require(GKJS);
   M.onRuntimeInitialized = function () {
     if (kbText !== null) M.FS.writeFile("axioms_std.js", kbText);
+    if (taxFiles) for (var t = 0; t < taxFiles.length; t++) M.FS.writeFile(taxFiles[t][0], taxFiles[t][1]);
     M.FS.writeFile("input", input);
   };
   M.postRun = [function () {

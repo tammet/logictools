@@ -196,12 +196,14 @@ For each of the 22 examples in `examples_content.md`:
 
 ## 8. Phase 2 (only on request, not part of this build)
 
-- Taxonomy example 23 (`classify.gkp` + `-defaults`): needs
-  `gk_name_number.txt` (1.9 MB) + `gk_taxonomy_packed.txt` (1.4 MB) fetched
-  on demand into the in-memory filesystem (`-datafolder` is unnecessary if
-  they are written to the current directory). Texts are prepared in
-  `examples_content.md` #23.
-- Web Worker wrapper so long searches do not freeze the tab.
+- Taxonomy example 23: DONE (2026-07-21). The two data files are shipped
+  gzipped (0.9 MB together) and decompressed in the browser with
+  DecompressionStream; see `examples_content.md` #23, which also records the
+  gk `-mbsize`/wasm-database-size fix this required (gk 1.0.1).
+- Web Worker wrapper: DONE — implemented from the start, and required for
+  correctness, not only responsiveness: gk keeps options in static globals
+  that are not reset between callMain calls, so each solve runs in a fresh
+  worker (see gkworker.js).
 - A "show clauses" button (`-clausify`). Note: `-clausify` currently drops
   `@confidence` from its output (observed 2026-07-20 on a
   confidence-annotated GKP input); check whether that is intended before

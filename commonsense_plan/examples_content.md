@@ -964,15 +964,25 @@ Expected output:
 
 ---
 
-## Phase-2 candidate (not in the initial page)
+## 23. taxonomy classification (implemented 2026-07-21)
 
-### 23. taxonomy priorities
+Menu name: `taxonomy classification` (in "more examples").
+Source: `exceptions/classify.gkp` (comment header shortened) with `-defaults`.
+Presets: `taxonomy: true` — the page fetches `gk_name_number.txt.gz`
+(0.65 MB) and `gk_taxonomy_packed.txt.gz` (0.26 MB), decompresses them with
+`DecompressionStream("gzip")`, hands them to the solver worker's in-memory
+filesystem, and adds `-defaults` to the arguments. The final note texts are
+in the page's `example_cs23_*` divs.
 
-Source: `exceptions/classify.gkp` with `-defaults`.
-Blocked on: the auxiliary data files `gk_name_number.txt` (1.9 MB) and
-`gk_taxonomy_packed.txt` (1.4 MB) which must be fetched on demand and placed
-into the wasm in-memory filesystem before solving. Expected output: answer
-`b1`, confidence 0.5552, blocker `unless(-isa(b1,human), tax(human))`.
-Include only if the on-demand fetch mechanism (plan section 8) is built;
-the input notes should then explain `tax(name)` priorities drawn from a
-WordNet-derived taxonomy: more specific classes defeat more general ones.
+This example needed a gk fix first: under wasm (and win32) the `-mbsize`
+option was silently inert and the database defaulted to the 10 MB
+`DEFAULT_MEMDBASE_SIZE` fallback instead of the intended 100 MB, so the
+taxonomy load ran out of datarec space. Fixed in `Main/gk.c` (gk 1.0.1,
+2026-07-20): the `} else {` of the size-default block sat inside the
+non-windows preprocessor branch. With the fix the example runs at the wasm
+default size; no `-mbsize` needed.
+
+Expected output: answer `b1` confidence 0.5552 (twice, via the human- and
+bird-default routes, blockers `unless(-isa(b1,human), tax(human))` /
+`unless(-isa(b1,bird), tax(bird))`), answer `h1` confidence 0.44 (twice),
+rejected answer `a1` with confidence against 1 (strict engine rule).

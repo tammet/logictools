@@ -26,6 +26,12 @@ function maybeRun() {
   var j = job; job = null;
   try {
     if (j.kb !== null && j.kb !== undefined) Module.FS.writeFile("axioms_std.js", j.kb);
+    if (j.datafiles) {
+      // extra data files (e.g. the -defaults taxonomy tables), already
+      // decompressed by the page; data is a Uint8Array
+      for (var i = 0; i < j.datafiles.length; i++)
+        Module.FS.writeFile(j.datafiles[i].name, j.datafiles[i].data);
+    }
     Module.FS.writeFile("input", j.input);
     gkout = "";
     try { Module.callMain(j.args); } catch (e) { /* emscripten exit() throws ExitStatus; normal */ }

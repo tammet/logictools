@@ -117,6 +117,7 @@ pre code {
 
 var activePreset = {};        // preset of the currently selected example
 var kbCache = null;           // cached background knowledge base text
+var taxCache = null;          // cached decompressed -defaults taxonomy files
 var gkWorker = null;          // the worker running the current/last solve
 
 // Per-example presets applied when an example is picked. Keys are the option
@@ -127,6 +128,8 @@ var gkWorker = null;          // the worker running the current/last solve
 //   maxanswers:"1"   -> set the max-answers field
 //   confidence:"0.1" -> set the confidence-limit field
 //   background:true  -> load the shared knowledge base gk_axioms_std.js
+//   taxonomy:true    -> run with -defaults and load the gzipped WordNet
+//                       taxonomy files (gk_name_number.txt, gk_taxonomy_packed.txt)
 var examplePresets = {
   "4":  { detail: true },
   "7":  { detail: true },
@@ -135,7 +138,8 @@ var examplePresets = {
   "15": { detail: true },
   "20": { seconds: "30", maxanswers: "1" },
   "21": { strategy: '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}', confidence: "0.1", background: true },
-  "22": { strategy: '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}', confidence: "0.1", background: true }
+  "22": { strategy: '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}', confidence: "0.1", background: true },
+  "23": { taxonomy: true }
 };
 
 function gid(x) { return document.getElementById(x); }
@@ -181,7 +185,9 @@ function solveWith(input, args, kb) {
     showResult("solver error: " + (e.message || e));
     if (w === gkWorker) { gkWorker = null; }
   };
-  w.postMessage({ input: input, args: args, kb: (kb === undefined ? null : kb) });
+  var msg = { input: input, args: args, kb: (kb === undefined ? null : kb) };
+  if (arguments.length > 3 && arguments[3]) msg.datafiles = arguments[3];
+  w.postMessage(msg);
 }
 
 function ensureKB(ok, fail) {
@@ -189,6 +195,35 @@ function ensureKB(ok, fail) {
   fetch("gk_axioms_std.js")
     .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
     .then(function (t) { kbCache = t; ok(t); })
+    .catch(function (e) { fail(e); });
+}
+
+// Fetch one gzipped data file and decompress it in the browser with
+// DecompressionStream. The taxonomy tables are served gzipped (0.9 MB for
+// both instead of 3.3 MB) and unpacked here before being handed to the
+// worker's in-memory filesystem.
+function fetchGz(url) {
+  return fetch(url).then(function (r) {
+    if (!r.ok) throw new Error("HTTP " + r.status + " for " + url);
+    var ds = new DecompressionStream("gzip");
+    return new Response(r.body.pipeThrough(ds)).arrayBuffer();
+  }).then(function (buf) { return new Uint8Array(buf); });
+}
+
+function ensureTax(ok, fail) {
+  if (taxCache !== null) { ok(taxCache); return; }
+  if (typeof DecompressionStream === "undefined") {
+    fail(new Error("this browser lacks DecompressionStream, needed to unpack the taxonomy files"));
+    return;
+  }
+  Promise.all([fetchGz("gk_name_number.txt.gz"), fetchGz("gk_taxonomy_packed.txt.gz")])
+    .then(function (res) {
+      taxCache = [
+        { name: "gk_name_number.txt", data: res[0] },
+        { name: "gk_taxonomy_packed.txt", data: res[1] }
+      ];
+      ok(taxCache);
+    })
     .catch(function (e) { fail(e); });
 }
 
@@ -201,6 +236,12 @@ function useGk(el) {
     ensureKB(
       function (kb) { solveWith(input, ["axioms_std.js", "input"].concat(flags), kb); },
       function (err) { showResult("could not load background knowledge (gk_axioms_std.js): " + err); }
+    );
+  } else if (activePreset && activePreset.taxonomy) {
+    showResult("loading the taxonomy files (about 0.9 MB)...");
+    ensureTax(
+      function (tax) { solveWith(input, ["input", "-defaults"].concat(flags), null, tax); },
+      function (err) { showResult("could not load the taxonomy files: " + err); }
     );
   } else {
     solveWith(input, ["input"].concat(flags), null);
@@ -397,6 +438,7 @@ query(animal(X)).
           <option value="20">planning (slow)</option>
           <option value="21">English: penguins</option>
           <option value="22">English: which one</option>
+          <option value="23">taxonomy classification</option>
         </select>
         <div style="display: inline-block; width: 28px; text-align: center;">or</div>
         <span class="btn btn-default btn-file">
@@ -1506,6 +1548,56 @@ introduced by the text without a name.</p></div>
 (marked <code>@sourcetype: "populate"</code>) supply typical members for the
 classes mentioned in the text, so that questions about "a fox" or "some bird"
 have witnesses to find.</p></div>
+
+<div id="example_cs23_input_notes"><h3>Example 23: taxonomy classification</h3>
+<p>Three objects with known parts: <code>h1</code> has a leg, <code>b1</code>
+has a leg, a wing and feathers, <code>a1</code> has an engine and a wing.
+Uncertain default rules classify by parts; the question asks which objects
+are organisms.</p>
+<p>The defaults here use <code>tax(class)</code> instead of a numeric
+priority: the priority is looked up from a WordNet-derived taxonomy, in which
+a more specific class defeats a more general one. The taxonomy comes from two
+data files (a mapping of names to class numbers and the packed class
+hierarchy), fetched gzipped (about 0.9 MB) and loaded automatically for this
+example; gk then runs with its <code>-defaults</code> option.</p></div>
+<pre><code id="example_cs23_input_code">% Classify three objects: h1 (likely human), b1 (likely bird),
+% a1 (likely airplane). Question: which objects are organisms?
+
+has_part(h1, leg).
+has_part(b1, leg).      has_part(b1, wing).     has_part(b1, feathers).
+has_part(a1, engine).   has_part(a1, wing).
+
+% Default classification rules with confidences; each applies unless the
+% opposite classification is provable, taxonomy-strength blockers.
+0.3::isa(X, human) :-
+    has_part(X, leg),      unless(-isa(X, human), tax(human)).
+0.2::isa(X, bird) :-
+    has_part(X, leg),      unless(-isa(X, bird), tax(bird)).
+0.6::isa(X, bird) :-
+    has_part(X, wing),     unless(-isa(X, bird), tax(bird)).
+0.8::isa(X, bird) :-
+    has_part(X, feathers), unless(-isa(X, bird), tax(bird)).
+0.4::isa(X, airplane) :-
+    has_part(X, wing),     unless(-isa(X, airplane), tax(airplane)).
+
+% Strict rules and the taxonomy.
+-isa(X, organism) :- has_part(X, engine).
+isa(X, organism)  :- isa(X, human).
+isa(X, organism)  :- isa(X, bird).
+-isa(X, organism) :- isa(X, airplane).
+
+query(isa(X, organism)).</code></pre>
+<div id="example_cs23_proof_notes">
+<p><code>b1</code> is an organism with confidence <code>0.5552</code>: the
+bird evidence from leg, wing and feathers cumulates to 0.936, and the
+opposing airplane default (0.4, from the wing) nets against it. The answer is
+reported through both its human-default and bird-default derivations, with
+the <code>tax(...)</code> blockers listed.</p>
+<p><code>h1</code> follows with confidence <code>0.44</code>: the human (0.3)
+and bird (0.2) leg-defaults cumulate to <code>1 - 0.7 * 0.8 = 0.44</code>.</p>
+<p><code>a1</code> is a rejected answer with confidence against 1: the wing
+suggested a bird, but the strict rule that nothing with an engine is an
+organism defeats the default regardless of taxonomy priorities.</p></div>
 
 </div><!-- /hidden examples -->
 
