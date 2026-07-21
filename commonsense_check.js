@@ -47,8 +47,11 @@ var EXAMPLES = {
           expect: ["confidence: 0.27", "conflict: 0", "ignorance: 0.73", "CONTESTED"] },
   "8":  { flags: ["-seconds","5","-maxanswers","10","-confidence","0.1"], kb: false,
           expect: ["answer: tweety", "answer: robin", "blockers: unless(-flies(robin), 2)", "confidence: 1"] },
+  // ex9: the 0.9 exception evidence outweighs the default, so tweety is a
+  // rejected answer with 0.9 - 0.1 = 0.8 against
   "9":  { flags: ["-seconds","5","-maxanswers","10","-confidence","0.1"], kb: false,
-          expect: ["answer: robin", "answer: tweety", "confidence: 0.1"] },
+          expect: ["answer: robin", "rejected answer: tweety",
+                   "confidence against: 0.8"] },
   "10": { flags: ["-seconds","5","-maxanswers","10","-confidence","0.1"], kb: false,
           expect: ["answer: tweety", "rejected answer: pingu", "confidence against: 1"] },
   "11": { flags: ["-seconds","5","-detail","-maxanswers","10","-confidence","0.1"], kb: false,
@@ -66,8 +69,11 @@ var EXAMPLES = {
           expect: ['"answer": true', '"confidence": 0.5600'] },
   "17": { flags: ["-seconds","5","-maxanswers","10","-confidence","0.1"], kb: false,
           expect: ["answer: true", "confidence: 0.56"] },
+  // ex18 asks which object does NOT fly: the penguin is the answer at
+  // 0.72 - 0.08 = 0.64, reported in the TPTP style of its input
   "18": { flags: ["-seconds","5","-maxanswers","10","-confidence","0.1"], kb: false,
-          expect: ["SZS status GaveUp", "rejected answer: p", "confidence against: 0.08"] },
+          expect: ["SZS status Theorem", "SZS answers Tuple [[p]]",
+                   "gk answer: p, confidence: 0.64"] },
   "19": { flags: ["-seconds","5","-maxanswers","10","-confidence","0.1"], kb: false,
           expect: ['"answer": true', '"confidence": 1.0000', '["flies","b1"]'] },
   "20": { flags: ["-seconds","30","-maxanswers","1","-confidence","0.1"], kb: false,

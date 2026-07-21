@@ -65,9 +65,10 @@ var EXAMPLES = {
   "15": { incl: { "tweety": null } },
   "16": { incl: { "yes": 0.56 }, thr: [0.56, 0, 0, 0.44], gk: { "yes": 0.56 } },
   "17": { incl: { "yes": 0.56 }, thr: [0.56, 0, 0, 0.44], gk: { "yes": 0.56 } },
-  // ex18 asks which bird does NOT fly: gk rejects p (0.08 against), while
-  // sampling counts the worlds in which -flies(p) is provable (about 0.64)
-  "18": { incl: { "p": null }, gk: { "p": 0.08 } },
+  // ex18 asks which bird does NOT fly: p is the answer at 0.64, and the
+  // sampled net over the worlds proving -flies(p) and those proving
+  // flies(p) comes to the same number
+  "18": { incl: { "p": null }, gk: { "p": 0.64 } },
   "19": { incl: { "yes": 1.0 }, thr: [1.0, 0, 0, 0] },
   "20": { refuse: "functions" },
   // the page refuses ex23 before the worker sees it (its preset loads the
