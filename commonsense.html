@@ -1228,8 +1228,10 @@ defeated;</li>
 ignored;</li>
 <li>an <i>equal-priority</i> argument &mdash; a standoff: gk commits to
 neither side (the Nixon diamond example).</li>
-<li>uncertain evidence for the exception nets against the answer's confidence
-without defeating it outright (the exception example).</li>
+<li>uncertain evidence for the exception divides the verdict: the default
+keeps the share not covered by the exception evidence, the rest counts
+against the answer, and the dominant side decides whether the answer stands
+or is shown as rejected (the exception example).</li>
 </ul>
 <p>Priorities are numbers, higher wins &mdash; they matter only when
 defaults compete. In larger knowledge bases priorities can also be derived
@@ -1287,16 +1289,18 @@ support once the opposition is subtracted. The sampling check plays out
 scenarios: it treats each confidence as the chance that the statement
 holds, deals out many random scenarios, and counts in how many the answer
 can be derived, minus how many where its opposite can.</p>
-<p>Two examples on this page show the two ways they can pull apart.</p>
-<p>In <i>an exception</i> (example 9), the solver reports Tweety flying at
-0.1: the flying default was worth 1 and the 0.9 against it is subtracted.
-The sampling check reports about &minus;0.8: in 90 of 100 scenarios the
-evidence against Tweety exists, and there "Tweety does not fly" is itself
-provable; in the other 10 the default goes through. The sampled table shows
-both ingredients &mdash; provable in 0.1 of the worlds, the negation
-provable in 0.9 &mdash; so the solver's number is the first column, and the
-sampled net is the difference of the two. One summarizes the surviving
-support, the other the overall balance.</p>
+<p>One example on this page shows the two calculations reaching the same
+verdict from two directions, and one shows them pulling apart.</p>
+<p>In <i>an exception</i> (example 9), the solver rejects Tweety flying
+with 0.8 against: the flying default holds only in the one case in ten
+where the contrary evidence is absent, so 0.1 supports flying, 0.9 supports
+the opposite, and the balance is 0.8 against. The sampling check arrives at
+the same split from the scenario side: in 90 of 100 scenarios the evidence
+against Tweety exists, and there "Tweety does not fly" is itself provable;
+in the other 10 the default goes through. The sampled table shows the same
+two ingredients &mdash; provable in 0.1 of the worlds, the negation
+provable in 0.9 &mdash; and its net of about &minus;0.8 matches the
+solver's verdict.</p>
 <p>In <i>contested premises</i> (example 7), the solver reports 0.27: it
 first weighs the bird question on its own &mdash; 0.5 for, 0.2 against
 leaves 0.3 &mdash; and lets only that survivor feed the flying rule. The
@@ -1556,14 +1560,16 @@ query(flies(X)).
 % that Tweety does not fly.</code></pre>
 <div id="example_cs9_proof_notes">
 <p><code>robin</code> still flies with confidence 1. For <code>tweety</code>
-the uncertain exception does not eliminate the default outright; it nets
-against it: the answer <code>tweety</code> remains with confidence
-<code>1 - 0.9 = 0.1</code>.</p>
+the 0.9 exception evidence outweighs the default: <code>tweety</code> is
+shown as a rejected answer with confidence against
+<code>0.9 - 0.1 = 0.8</code>. The default holds only in the one case in ten
+where the contrary evidence is absent, so 0.1 supports flying and 0.9
+supports the opposite.</p>
 <p>The output shows both the <code>proof for</code> (the default) and the
 <code>proof against</code> (the exception evidence) for
 <code>tweety</code>.</p>
 <p>Try changing <code>0.9</code> to <code>1</code>: with a certain exception
-the answer <code>tweety</code> is fully defeated.</p></div>
+the rejection is complete, with confidence against 1.</p></div>
 
 <div id="example_cs10_input_notes"><h3>Example 10: penguins</h3>
 <p>Two default rules compete: birds fly (priority 3) and objects do not fly
@@ -1819,16 +1825,17 @@ cnf(who_does_not_fly, conjecture,
     ( ~ flies(X) ) ).</code></pre>
 <div id="example_cs18_proof_notes">
 <p>With TPTP input the answer comes back in the TPTP style: an
-<code>SZS status</code> line and the proof as an inference list. The penguin
-is reported with confidence against 0.08 below the default reporting limit,
-hence <code>GaveUp</code> with the rejected-answer support shown.</p>
+<code>SZS status</code> line, the answer tuple, and the proofs as inference
+lists. The penguin <code>p</code> is the answer at confidence
+<code>0.72 - 0.08 = 0.64</code>: the no-fly rule applies through the 0.8
+penguin fact (<code>0.8 * 0.9 = 0.72</code> for not flying), while the
+flying default supports the opposite only in the 0.08 where the penguin is
+a bird but the no-fly rule does not apply.</p>
 <p>The output notation follows the input notation.</p>
 <p>This example rewards a look with the <i>sampling check</i> under
-Advanced: counting the worlds in which <code>-flies(p)</code> is provable
-gives about 0.65, while gk nets the two defaults against each other and
-reports only 0.08 against. The gap shows how differently a
-world-counting reading and gk's evidence-netting reading treat competing
-defaults; see <i>checking by sampling</i> above.</p></div>
+Advanced: counting the worlds in which <code>-flies(p)</code> is provable,
+minus those in which <code>flies(p)</code> is, gives about the same 0.64;
+see <i>checking by sampling</i> above.</p></div>
 
 <div id="example_cs19_input_notes"><h3>Example 19: defaults in JSON</h3>
 <p>The birds-and-penguins default in JSON notation. What GKP writes as
