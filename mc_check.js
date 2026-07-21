@@ -42,7 +42,10 @@ var SEED = 0;
 // gk: gk's own confidence per answer, checked against the reference run.
 
 var EXAMPLES = {
-  "1":  { incl: { "polly": 1.0 }, gk: { "polly": 1.0 } },
+  // ex1: everything is certain, so every sampled world is the whole program;
+  // tweety flies in all of them, and no world proves the penguin flying
+  // (the blocked default cannot fire), exactly as in ex10
+  "1":  { incl: { "tweety": 1.0 }, gk: { "tweety": 1.0, "pingu": 1.0 } },
   "2":  { incl: { "yes": 0.56 }, thr: [0.56, 0, 0, 0.44], gk: { "yes": 0.56 } },
   "3":  { incl: { "yes": 0.80 }, thr: [0.80, 0, 0, 0.20], gk: { "yes": 0.8 } },
   "4":  { incl: { "yes": 0.30 }, thr: [0.30, 0, 0.40, 0.30], gk: { "yes": 0.3 } },

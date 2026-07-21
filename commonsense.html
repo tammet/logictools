@@ -820,13 +820,16 @@ More about this:
       <div id="gkc_1">
         <textarea class="form-control" id="gkc_1_input" spellcheck="false"
         style="height: 200px; width:100%; margin-bottom: 20px; color: black;
-        font-family: 'Inconsolata','Roboto Mono','Courier New', Courier, monospace; ">penguin(polly).
+        font-family: 'Inconsolata','Roboto Mono','Courier New', Courier, monospace; ">bird(tweety).
+penguin(pingu).
 
-bird(X) :- penguin(X).
-animal(X) :- bird(X).
+bird(X)   :- penguin(X).
+-flies(X) :- penguin(X).
+flies(X)  :- bird(X),   unless(-flies(X), 3).
 
-query(animal(X)).
+query(flies(X)).
 
+% Penguins are birds, penguins do not fly, birds normally fly.
 % Pick an example from the menus, or edit this and press Solve.</textarea>
         <button onclick="useGk(this); return false;" class="btn btn-small btn-primary btn-prove"
         style="width: 70px;">Solve</button>
@@ -837,7 +840,7 @@ query(animal(X)).
           aria-label="introductory examples" onchange="selectExample('simple')">
           <option value="examples">examples</option>
           <optgroup label="Basics and confidence">
-            <option value="1">facts and rules</option>
+            <option value="1">facts, rules, a default</option>
             <option value="2">confidences</option>
             <option value="3">several sources</option>
             <option value="4">for and against</option>
@@ -1067,6 +1070,10 @@ Draheim.</p>
 </div></div></div></div>
 
 </div><!-- /syntax -->
+
+<!-- bottom spacer, as on the other pages: without it the example notes under
+     the result sit on the very bottom edge and cannot be scrolled past -->
+<div style="height:60px; width: 100%"> </div>
 
 <!-- (the About paragraph lives at the end of the help area above) -->
 
@@ -1345,34 +1352,45 @@ directory</a> of the gkreasoner repository; the estimates are repeatable
 
 <div hidden>
 
-<div id="example_cs1_input_notes"><h3>Example 1: facts and rules</h3>
+<div id="example_cs1_input_notes"><h3>Example 1: facts, rules, a default</h3>
 <p>Each statement ends with a period. Lowercase names such as
-<code>polly</code> are constants, predicates, or functions; uppercase names
-such as <code>X</code> are variables. The first rule says that every penguin is
-a bird, and the second that every bird is an animal.</p>
-<p>The <code>query</code> statement asks the question. Since it contains the
-variable <code>X</code>, gk returns each value for which
-<code>animal(X)</code> can be derived.</p>
+<code>pingu</code> are constants and predicates; uppercase names such as
+<code>X</code> are variables. <code>bird(X) :- penguin(X)</code> is a rule:
+every penguin is a bird. A minus sign states a negation, so the next rule
+says a penguin does not fly.</p>
+<p>The last rule is a <i>default</i>: a bird flies <i>unless</i>
+<code>-flies(X)</code> can be argued &mdash; the classical "birds normally
+fly" with its exception. The <code>query</code> statement asks the question;
+since it contains the variable <code>X</code>, gk returns each value for
+which <code>flies(X)</code> can be derived.</p>
 <p>A percent sign <code>%</code> starts a line comment; <code>/* ... */</code>
 comments work as well. The order of statements does not matter.</p></div>
-<pre><code id="example_cs1_input_code">penguin(polly).
+<pre><code id="example_cs1_input_code">bird(tweety).
+penguin(pingu).
 
-bird(X) :- penguin(X).
-animal(X) :- bird(X).
+bird(X)   :- penguin(X).
+-flies(X) :- penguin(X).
+flies(X)  :- bird(X),   unless(-flies(X), 3).
 
-query(animal(X)).
+query(flies(X)).
 
-% Which animal can be derived from these facts and rules?</code></pre>
+% Penguins are birds, penguins do not fly, birds normally fly.</code></pre>
 <div id="example_cs1_proof_notes">
-<p>The answer is <code>polly</code> with confidence 1. The proof applies the two
-rules to the input fact.</p>
-<p>The <code>proof for</code> block lists numbered derivation steps.
+<p><code>tweety</code> flies with confidence 1: the default applies and no
+argument for its exception is found. The <code>blockers</code> line records
+the exception the answer depends on. <code>pingu</code> is shown as a
+<i>rejected answer</i>: the flying default produced a candidate, but the
+strict penguin rule proves <code>-flies(pingu)</code> and defeats it &mdash;
+the rejected block shows both the candidate's proof and the proof
+against it.</p>
+<p>Each <code>proof</code> block lists numbered derivation steps.
 <code>in(frm_1)</code> marks an input statement;
-<code>mp(1, 2)</code> means the step was derived from steps 1 and 2 by
-<a href="https://en.wikipedia.org/wiki/Resolution_(logic)">resolution</a>.
-The number after each step name is the confidence of that step.</p>
-<p>The internal literal <code>$ans(X)</code> collects the answer value: the last
-step contains <code>$ans(polly)</code>.</p></div>
+<code>mp(1.1, 2)</code> means the step was derived from steps 1 and 2 by
+<a href="https://en.wikipedia.org/wiki/Resolution_(logic)">resolution</a>
+(the decimal names the literal used). The number after each step name is
+the confidence of that step.</p>
+<p>The internal literal <code>$ans(X)</code> collects the answer value: the
+last step of tweety's proof contains <code>$ans(tweety)</code>.</p></div>
 
 <div id="example_cs2_input_notes"><h3>Example 2: confidences</h3>
 <p>A number between 0 and 1 before <code>::</code> states how strongly the
@@ -1522,11 +1540,18 @@ opposing evidence.</p>
 <code>conflict_sources</code>; see the "conflict detail" example under
 <i>more examples</i>.</p>
 <p>This example is also a good one for the <i>sampling check</i> under
-Advanced: reading each confidence as a probability and counting the worlds
-in which <code>flies(tweety)</code> is provable gives about 0.46, not 0.27
-&mdash; sampling counts every world where the bird premise holds, while gk
-first nets the evidence against the premise. The difference between the two
-readings is genuine; see <i>checking by sampling</i> above.</p></div>
+Advanced, because its modes pull in different directions. Reading each
+confidence as an independent chance and counting the worlds in which
+<code>flies(tweety)</code> is provable gives about 0.46, not 0.27: that
+count includes every world where the bird premise holds, even the worlds
+where "tweety is not a bird" holds alongside it, so the evidence against
+the premise changes nothing. The <i>four masses</i> mode instead arrives at
+gk's own 0.27, and not by accident: there the two bird statements compete
+for one shared acceptance threshold, so the premise counts only in the
+<code>0.5 - 0.2 = 0.3</code> margin between them &mdash; the same netting
+gk computes &mdash; and the flying rule fires in 0.9 of that. The
+difference between the first reading and gk is genuine; see <i>checking by
+sampling</i> above.</p></div>
 
 <div id="example_cs8_input_notes"><h3>Example 8: defaults</h3>
 <p>The <code>unless(-flies(X), 2)</code> condition makes this a <i>default
