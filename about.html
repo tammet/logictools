@@ -123,9 +123,9 @@ pre code {
     <div class="navbar-collapse collapse">
       <ul class="nav navbar-nav">
         <li class="dummy"><a href="index.html">Predicate logic</a></li>        
-        <!-- <li class="dummy"><a href="commonsense.html">Commonsense</a></li> -->
+        <!-- <li class="dummy"><a href="commonsense.html">Uncertainty</a></li> -->
         <li class="dummy"><a href="prop.html">Propositional logic</a></li>
-        <li class="dummy"><a href="json.html">Json</a></li>
+        <li class="dummy"><a href="json.html">JSON</a></li>
         <!-- <li class="dummy"><a href="predicate.html">Predicate logic</a></li> -->
         <li class="dummy"><a href="download.html">Download</a></li>        
         <li class="active"><a href="about.html">About</a></li> 
@@ -157,7 +157,7 @@ command-line version: the latter can utilize multiple cores, all the available m
 memory databases and has several additional options not available in the browser. 
 The browser version runs on a single core and has severe memory restrictions.
 <p></p>
-The <a href="commonsense.html">commonsense page</a> runs the
+The <a href="commonsense.html">uncertainty page</a> runs the
 <a href="https://github.com/tammet/gkreasoner">gk reasoner</a> in the
 browser: predicate logic extended with confidences, defaults with exceptions,
 and tolerance of contradictions.
@@ -220,6 +220,7 @@ Use these tools for learning logic and experimenting with reasoners.
 <p>
 Contents:
 <ul>
+  <li><a href="#uncertainty">Reasoning under uncertainty</a></li>
   <li>Predicate logic
     <ul>
     <li><a href="#basic_syntax">Basic predicate logic syntax</a>
@@ -250,7 +251,33 @@ Contents:
 
 </div></div></div></div>        
 
-<div class="container" style="margin-top: 5px; margin-bottom: 15px; 
+<div class="container" style="margin-top: 5px; margin-bottom: 15px;">
+<h3 id="uncertainty">Reasoning under uncertainty</h3>
+</div>
+
+<div class="container">
+  <div class="row">
+     <div class="col-md-12 wblock wblock1">
+      <div class="wiblock wiblock_full">
+<p>
+The <a href="commonsense.html">Reasoning under uncertainty page</a> runs the
+gk reasoner in the browser. gk extends first-order predicate logic with
+confidence values, explicit negation, defaults and exceptions, and tolerance
+of contradictory evidence. It assesses evidence for and against an answer
+separately and reports the result together with proofs.
+<p>
+The browser version runs locally using WebAssembly. Native versions and
+further documentation are available from the
+<a href="download.html">download page</a> and the
+<a href="https://github.com/tammet/gkreasoner">gkreasoner repository</a>:
+<ul>
+  <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/input_languages.md">Input-language reference</a></li>
+  <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/how_gk_works.md">How gk works</a></li>
+  <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/strategy_reference.md">Strategy reference</a></li>
+</ul>
+</div></div></div></div>
+
+<div class="container" style="margin-top: 5px; margin-bottom: 15px;
 ">
 <h3 id="basic_syntax">Basic predicate logic syntax</h3>
 </div>
@@ -270,7 +297,7 @@ description.
 Gkc supports several syntaxes: the <i>simple syntax</i> used in most examples,
 <a href="http://tptp.org/">TPTP</a> syntax and 
 <a href="https://github.com/tammet/json-ld-logic">JSON-LD-LOGIC</a> syntax: see
-the separate <a href="json.html">Json</a> menu for the examples and explanations.
+the separate <a href="json.html">JSON</a> menu for the examples and explanations.
 <p>
 The <i>simple syntax</i> is an extension of the
 TPTP FOF and CNF syntaxes as described in the

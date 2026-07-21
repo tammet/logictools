@@ -1,5 +1,5 @@
 {
- "_comment": "Reference values for mc_check.js, produced by the Python implementation in /opt/gkreasoner/montecarlo on the same page examples: incl = gkmc.py pos-neg per answer at 4000 trials, seed 1; thr = threshold_worlds.py four masses [for, against, conflict, ignorance] at 100000 draws, seed 1. GKP examples were converted with `gk EX -writejson`. Regenerate when the reference implementation changes.",
+ "_comment": "Reference values for mc_check.js, produced by the Python implementation in /opt/gkreasoner/montecarlo on the same page examples: incl = gkmc.py pos-neg per answer at 4000 trials, seed 1; thr = threshold_worlds.py four masses [for, against, conflict, ignorance] at 100000 draws, seed 1. GKP examples were converted with `gk EX -writejson`. Regenerate when the reference implementation changes. 2026-07-21: answer keys renamed together with the page examples' constants (a/b -> tweety/robin/pingu); the values are unchanged since the names play no role in the probabilities.",
  "1": {
   "incl": {
    "polly": 1.0
@@ -80,21 +80,21 @@
  },
  "8": {
   "incl": {
-   "a": 1.0,
-   "b": 1.0
+   "tweety": 1.0,
+   "robin": 1.0
   },
   "trials": 4000
  },
  "9": {
   "incl": {
-   "a": -0.7955,
-   "b": 1.0
+   "tweety": -0.7955,
+   "robin": 1.0
   },
   "trials": 4000
  },
  "10": {
   "incl": {
-   "b": 1.0
+   "tweety": 1.0
   },
   "trials": 4000
  },
@@ -103,7 +103,7 @@
  },
  "15": {
   "incl": {
-   "a": 0.2505
+   "tweety": 0.2505
   },
   "trials": 4000
  },

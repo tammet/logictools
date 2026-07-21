@@ -49,19 +49,20 @@ var EXAMPLES = {
   "5":  { incl: { "yes": null }, thr: null },
   "6":  { incl: { "yes": null }, thr: null },
   "7":  { incl: { "yes": null }, thr: null, gk: { "yes": 0.27 } },
-  "8":  { incl: { "a": 1.0, "b": 1.0 } },
-  "9":  { incl: { "b": 1.0, "a": null } },
-  // ex10: gk reports p as a rejected answer; no world proves it, since the
-  // blocked default cannot fire. ex11 is the Nixon standoff: gk commits to
-  // neither side and no world proves the answer either.
-  "10": { incl: { "b": 1.0 }, gk: { "b": 1.0, "p": 1.0 } },
-  "11": { incl: {}, gk: { "n": 0.0 } },
-  // ex12 also uses named blocker priorities; the function terms are found
-  // first and are the reason the page shows
-  "12": { refuse: "functions" },
+  "8":  { incl: { "tweety": 1.0, "robin": 1.0 } },
+  "9":  { incl: { "robin": 1.0, "tweety": null } },
+  // ex10: gk reports the penguin as a rejected answer; no world proves it,
+  // since the blocked default cannot fire. ex11 is the Nixon standoff: gk
+  // commits to neither side and no world proves the answer either.
+  "10": { incl: { "tweety": 1.0 }, gk: { "tweety": 1.0, "pingu": 1.0 } },
+  "11": { incl: {}, gk: { "nixon": 0.0 } },
+  // ex12 (where is John) is eligible, but its grounding is ~20000 clauses
+  // and each sampled world takes about a second: only its setup verdict and
+  // the four-mass refusal (open query) are checked here
+  "12": { skipIncl: true, thrRefuse: "thrOpen" },
   "13": { refuse: "builtin" },
   "14": { refuse: "builtin" },
-  "15": { incl: { "a": null } },
+  "15": { incl: { "tweety": null } },
   "16": { incl: { "yes": 0.56 }, thr: [0.56, 0, 0, 0.44], gk: { "yes": 0.56 } },
   "17": { incl: { "yes": 0.56 }, thr: [0.56, 0, 0, 0.44], gk: { "yes": 0.56 } },
   // ex18 asks which bird does NOT fly: gk rejects p (0.08 against), while
