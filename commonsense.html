@@ -577,7 +577,7 @@ function mcRenderInclusion() {
     if (order.indexOf(refOrder[i]) < 0) order.push(refOrder[i]);
 
   var html = "<p>Sampling check: " +
-    (subtract ? "net confidence" : "provability") + ", " + r.trials +
+    (subtract ? "world counts" : "provability") + ", " + r.trials +
     " sampled worlds.</p>";
   html += '<table class="table table-condensed" style="width: auto;">';
   html += "<tr><th>answer</th>";
@@ -820,17 +820,15 @@ More about this:
       <div id="gkc_1">
         <textarea class="form-control" id="gkc_1_input" spellcheck="false"
         style="height: 200px; width:100%; margin-bottom: 20px; color: black;
-        font-family: 'Inconsolata','Roboto Mono','Courier New', Courier, monospace; ">bird(tweety).
+        font-family: 'Inconsolata','Roboto Mono','Courier New', Courier, monospace; ">% Penguins are birds, penguins do not fly, birds normally fly.
+bird(tweety).
 penguin(pingu).
 
 bird(X)   :- penguin(X).
 -flies(X) :- penguin(X).
-flies(X)  :- bird(X),   unless(-flies(X), 3).
+flies(X)  :- bird(X),   unless(-flies(X)).
 
-query(flies(X)).
-
-% Penguins are birds, penguins do not fly, birds normally fly.
-% Pick an example from the menus, or edit this and press Solve.</textarea>
+query(flies(X)).</textarea>
         <button onclick="useGk(this); return false;" class="btn btn-small btn-primary btn-prove"
         style="width: 70px;">Solve</button>
         <button onclick="stopSolve(this); return false;" class="btn btn-small btn-default"
@@ -902,8 +900,7 @@ query(flies(X)).
           <div style="padding-top: 15px;">
             <div style="display: inline-block; width: 62px; text-align: center;">sampling</div>
             <select class="form-control" style="width: 160px;" id="mc_method">
-              <option value="subtract">net confidence</option>
-              <option value="provable">provability</option>
+              <option value="subtract">world counts</option>
               <option value="threshold">four masses</option>
             </select>
             <div style="display: inline-block; width: 50px; text-align: center;">worlds</div>
@@ -1071,9 +1068,9 @@ Draheim.</p>
 
 </div><!-- /syntax -->
 
-<!-- bottom spacer, as on the other pages: without it the example notes under
-     the result sit on the very bottom edge and cannot be scrolled past -->
-<div style="height:60px; width: 100%"> </div>
+<!-- bottom spacer: without it the example notes under the result sit on the
+     very bottom edge and cannot be scrolled past; generous on purpose -->
+<div style="height:250px; width: 100%"> </div>
 
 <!-- (the About paragraph lives at the end of the help area above) -->
 
@@ -1276,14 +1273,13 @@ reading: treat each confidence as the probability that the statement holds,
 generate many random worlds accordingly, and count what happens. The controls
 are in the <i>Advanced</i> panel.</p>
 <ul>
-<li><b>Provability</b> and <b>net confidence</b> build each world by keeping
-every uncertain statement with probability equal to its confidence and
-dropping it otherwise; certain statements are always kept. A plain proof
-search with no confidence arithmetic then decides the world.
-<i>Provability</i> is the fraction of worlds in which the answer is
-provable. <i>Net confidence</i> subtracts the fraction in which the
-answer's explicit negation is provable, measured in the same worlds &mdash;
-mirroring how gk weighs evidence against an answer. One proof search runs
+<li><b>World counts</b> build each world by keeping every uncertain
+statement with probability equal to its confidence and dropping it
+otherwise; certain statements are always kept. A plain proof search with no
+confidence arithmetic then decides the world. The result reports, per
+answer, the fraction of worlds in which it is provable, the fraction in
+which its explicit negation is provable, and the net of the two &mdash; the
+net mirrors how gk weighs evidence against an answer. One proof search runs
 per world in your browser, so thousands of worlds take up to a few
 minutes; the 95% interval in the result shows the sampling precision.</li>
 <li><b>Four masses</b> estimates the split shown by the detailed report:
@@ -1365,16 +1361,15 @@ since it contains the variable <code>X</code>, gk returns each value for
 which <code>flies(X)</code> can be derived.</p>
 <p>A percent sign <code>%</code> starts a line comment; <code>/* ... */</code>
 comments work as well. The order of statements does not matter.</p></div>
-<pre><code id="example_cs1_input_code">bird(tweety).
+<pre><code id="example_cs1_input_code">% Penguins are birds, penguins do not fly, birds normally fly.
+bird(tweety).
 penguin(pingu).
 
 bird(X)   :- penguin(X).
 -flies(X) :- penguin(X).
-flies(X)  :- bird(X),   unless(-flies(X), 3).
+flies(X)  :- bird(X),   unless(-flies(X)).
 
-query(flies(X)).
-
-% Penguins are birds, penguins do not fly, birds normally fly.</code></pre>
+query(flies(X)).</code></pre>
 <div id="example_cs1_proof_notes">
 <p><code>tweety</code> flies with confidence 1: the default applies and no
 argument for its exception is found. The <code>blockers</code> line records
@@ -2175,6 +2170,13 @@ function handleFileSelect(evt) {
   }
 }
 gid('files').addEventListener('change', handleFileSelect, false);
+
+// The page opens with example 1 already in the input box, so select it
+// properly as well: this puts its explanation above the box and, more
+// importantly, its result notes under the result area -- without it the
+// very first Solve showed a proof with no explanation beneath.
+gid('select_example').value = '1';
+selectExample('simple');
 </script>
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/js/bootstrap.min.js"></script>

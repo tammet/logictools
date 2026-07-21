@@ -33,7 +33,7 @@ var STRAT_NL = '{"strategy": ["negative_pref", "posunitpara"], "query_preference
 var EXAMPLES = {
   "1":  { flags: ["-seconds","5","-maxanswers","10","-confidence","0.1"], kb: false,
           expect: ["answer: tweety", "confidence: 1",
-                   "blockers: unless(-flies(tweety), 3)",
+                   "blockers: unless(-flies(tweety))",
                    "rejected answer: pingu", "confidence against: 1"] },
   "2":  { flags: ["-seconds","5","-maxanswers","10","-confidence","0.1"], kb: false,
           expect: ["answer: true", "confidence: 0.56"] },
