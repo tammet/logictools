@@ -818,8 +818,8 @@ More about this:
   <div class="form-inline" method="post" osnubmit="return false;">
     <div class="wblock">
       <div id="gkc_1">
-        <textarea class="form-control" id="gkc_1_input" spellcheck="false"
-        style="height: 200px; width:100%; margin-bottom: 20px; color: black;
+        <textarea class="form-control" id="gkc_1_input" spellcheck="false" aria-label="problem input"
+        style="height: 200px; width:100%; margin-bottom: 20px; color: black; resize: vertical;
         font-family: 'Inconsolata','Roboto Mono','Courier New', Courier, monospace; ">% Penguins are birds, penguins do not fly, birds normally fly.
 bird(tweety).
 penguin(pingu).
@@ -834,7 +834,7 @@ query(flies(X)).</textarea>
         <button onclick="stopSolve(this); return false;" class="btn btn-small btn-default"
         style="width: 55px;">Stop</button>
         <div style="display: inline-block; width: 50px; text-align: center;">examples</div>
-        <select class="form-control" style="width: 150px;" id="select_example"
+        <select class="form-control" style="width: 180px;" id="select_example"
           aria-label="introductory examples" onchange="selectExample('simple')">
           <option value="examples">examples</option>
           <optgroup label="Basics and confidence">
@@ -889,22 +889,27 @@ query(flies(X)).</textarea>
         >Clear input</button>
         <div id="advanced_buttons" style="padding-top: 15px; display: none;">
           <div style="display: inline-block; width: 62px; text-align: center;">seconds</div>
-          <input type="text" class="form-control" id="seconds" value="5" style="width: 50px"></input>
+          <input type="text" class="form-control" id="seconds" value="5" style="width: 50px"
+                 aria-label="time limit in seconds"></input>
           <label style="font-weight: normal; margin: 0 8px 0 15px; vertical-align: middle;"
                  >detailed&nbsp;report <input type="checkbox" id="detail"
                  style="margin: 0 0 0 5px; position: relative; top: 2px;"></label>
           <div style="display: inline-block; width: 80px; text-align: center;">max&nbsp;answers</div>
-          <input type="text" class="form-control" id="maxanswers" value="10" style="width: 55px"></input>
+          <input type="text" class="form-control" id="maxanswers" value="10" style="width: 55px"
+                 aria-label="maximum number of answers"></input>
           <div style="display: inline-block; width: 105px; text-align: center;">confidence&nbsp;limit</div>
-          <input type="text" class="form-control" id="confidence" value="0.1" style="width: 55px"></input>
+          <input type="text" class="form-control" id="confidence" value="0.1" style="width: 55px"
+                 aria-label="confidence limit: the minimum net support margin"></input>
           <div style="padding-top: 15px;">
             <div style="display: inline-block; width: 62px; text-align: center;">sampling</div>
-            <select class="form-control" style="width: 160px;" id="mc_method">
+            <select class="form-control" style="width: 160px;" id="mc_method"
+              aria-label="sampling method">
               <option value="subtract">world counts</option>
               <option value="threshold">four masses</option>
             </select>
             <div style="display: inline-block; width: 50px; text-align: center;">worlds</div>
-            <select class="form-control" style="width: 90px;" id="mc_trials">
+            <select class="form-control" style="width: 90px;" id="mc_trials"
+              aria-label="number of sampled worlds">
               <option value="300">300</option>
               <option value="1000" selected>1000</option>
               <option value="10000">10000</option>
@@ -915,6 +920,7 @@ query(flies(X)).</textarea>
           </div>
           <p>
           <textarea class="form-control" id="strategy" spellcheck="false"
+           aria-label="search strategy as json text"
            style="height: 80px; width:100%; margin-bottom: 5px; margin-top: 15px;"
            placeholder="Optional search strategy as json text (see the strategy reference)"></textarea>
           <div style="margin-bottom: 20px;"><a
@@ -964,7 +970,9 @@ below. Then edit the problem, or clear the box and write your own.
 <i>Stop</i> interrupts a long search; <i>Browse</i> loads a file.</p>
 <p>The <i>Advanced</i> button opens further controls: the time limit, the
 detailed report (a four-part breakdown of the evidence for each answer), a
-cap on the number of answers, the minimal confidence an answer needs, a
+cap on the number of answers, the confidence limit &mdash; the minimum net
+support margin an answer needs, the evidence for it minus the evidence
+against it &mdash; a
 sampling check that re-estimates the confidences by simulation, and a
 search-strategy field.</p>
 
@@ -1025,8 +1033,10 @@ from earlier ones. The step forms:</p>
 names the third statement of an input without explicit names;</li>
 <li><code>goal(name)</code> &mdash; the question, negated for the proof
 search;</li>
-<li><code>mp(1, 2)</code> &mdash; a resolution step combining steps 1 and
-2. A decimal as in <code>mp(1.3, 2)</code> identifies which literal of the
+<li><code>mp(...)</code> &mdash; a resolution step combining the listed
+earlier steps; two premises as in <code>mp(1, 2)</code> are the common
+case, but three or more occur, as in <code>mp(1, 4, 5)</code>. A decimal
+as in <code>mp(1.3, 2)</code> identifies which literal of the
 clause in step 1 was used: its third one;</li>
 <li><code>cumul(1, 2)</code> &mdash; two independent proofs of the same
 answer combined;</li>
@@ -1038,9 +1048,13 @@ answer combined;</li>
 Answers produced by default rules list their <code>blockers</code>: the
 exception conditions the answer depends on. Candidates defeated by
 exceptions or opposing evidence appear as <code>rejected answer</code>
-blocks with the proofs of both sides. With the <i>detailed report</i>
-checked, each answer also shows the four-part
-<code>support / conflict / ignorance</code> split of the belief.</p>
+blocks with the candidate's own proof; a <code>proof against</code> is
+included when the answer's explicit negation was derived. With the
+<i>detailed report</i> checked, each answer also shows the four-part split
+of the belief: support for, support against, conflict, and ignorance.</p>
+<p>Failure to find a proof is not by itself proof of falsity: the time
+limit and the search strategy can miss proofs. Only an explicit proof of
+the negation makes a ground answer <code>false</code>.</p>
 
 <h4>Full documentation</h4>
 <ul>
@@ -1147,19 +1161,26 @@ exception conditions the answer depends on;</li>
 <li><code>proof for</code> and, when relevant, <code>proof against</code>:
 numbered derivation steps. <code>in(name)</code> is an input statement,
 <code>goal(name)</code> the (negated) question,
-<code>mp(i, j)</code> a resolution step from earlier steps &mdash; a
+<code>mp(...)</code> a resolution step from the listed earlier steps (two
+or more) &mdash; a
 decimal as in <code>mp(1.3, 2)</code> names the literal of the clause that
 was used &mdash; <code>cumul(i, j)</code> a combination of independent
 proofs, <code>=</code> an equality step, <code>arithinst</code> an
 arithmetic instantiation. The number at the end of each step is the
 confidence at that step;</li>
 <li><code>rejected answer:</code> a candidate defeated by exceptions or
-opposing evidence, shown with the proofs of both sides.</li>
+opposing evidence, shown with the candidate's own proof; a
+<code>proof against</code> is included when the answer's explicit negation
+was derived.</li>
 </ul>
+<p>Failure to find a proof is not by itself proof of falsity: the time
+limit and the search strategy can miss proofs. Only an explicit proof of
+the negation produces <code>false</code> for a ground question.</p>
 <p>With the <i>detailed report</i> switched on (under Advanced), each answer
-also shows <code>support / conflict / ignorance</code> lines splitting the
-belief into the part supported only for, only against, claimed by both sides,
-and claimed by neither &mdash; the four parts sum to 1 &mdash; plus warning
+also shows <code>support</code> and <code>conflict / ignorance</code> lines
+splitting the belief into four parts &mdash; support for, support against,
+conflict (claimed by both sides), and ignorance (claimed by neither); the
+four parts sum to 1 &mdash; plus warning
 flags such as <code>CONTESTED</code>. JSON detail output can also include a
 list of conflict sources.</p>
 <p>JSON input produces JSON output; TPTP input produces TPTP-style output.</p>
@@ -1296,7 +1317,8 @@ conclusion.</li>
 </ul>
 <p><b>When the two numbers differ.</b> The solver and the sampling check
 often agree, and agreement supports reading the confidences as chances.
-When they differ, neither number is a mistake &mdash; they answer different
+When they differ, the difference does not by itself mean that either
+number is a mistake &mdash; they answer different
 questions. The solver weighs arguments: it builds the best proof for an
 answer and the best proof against it, and reports what remains of the
 support once the opposition is subtracted. The sampling check plays out
@@ -1356,7 +1378,10 @@ every penguin is a bird. A minus sign states a negation, so the next rule
 says a penguin does not fly.</p>
 <p>The last rule is a <i>default</i>: a bird flies <i>unless</i>
 <code>-flies(X)</code> can be argued &mdash; the classical "birds normally
-fly" with its exception. The <code>query</code> statement asks the question;
+fly" with its exception. An <code>unless</code> may also carry a numeric
+priority, as the later default examples do; without one the default is
+simply incomparable with explicitly ordered defaults, which this example
+does not need. The <code>query</code> statement asks the question;
 since it contains the variable <code>X</code>, gk returns each value for
 which <code>flies(X)</code> can be derived.</p>
 <p>A percent sign <code>%</code> starts a line comment; <code>/* ... */</code>
@@ -1476,11 +1501,16 @@ smokes(chris).
 query(smokes(sam)).</code></pre>
 <div id="example_cs5_proof_notes">
 <p>The confidence is <code>0.3764</code>. Several different derivations
-support the answer: the base tendency (0.3), and a chain through the certain
-facts &mdash; sam is a friend of chris (via symmetry, 0.9), chris smokes, sam
-may be susceptible (0.6) &mdash; contributing on top of the base rate. gk finds
+support the answer: the base tendency (0.3), and a chain through the
+friendship &mdash; sam may be susceptible (0.6), sam is a friend of chris,
+chris smokes. The friendship itself pools two sources: the known fact via
+the symmetry rule (0.9) and the general 0.1 tendency,
+<code>1 - (1 - 0.9)(1 - 0.1) = 0.91</code>. The chain then contributes
+<code>0.6 * 0.91 * 0.2 = 0.1092</code>, and the noisy-or with the base
+tendency gives <code>1 - (1 - 0.3)(1 - 0.1092) = 0.3764</code>. gk finds
 the separate proofs and cumulates them, multiplying confidences along each
-chain and combining the chains with the noisy-or rule.</p>
+chain and combining the chains with the noisy-or rule, without counting the
+shared friendship evidence twice.</p>
 <p>The <code>cumul</code> steps in the proof show where the independent
 derivations are merged.</p></div>
 
@@ -1537,7 +1567,8 @@ opposing evidence.</p>
 <p>This example is also a good one for the <i>sampling check</i> under
 Advanced, because its modes pull in different directions. Reading each
 confidence as an independent chance and counting the worlds in which
-<code>flies(tweety)</code> is provable gives about 0.46, not 0.27: that
+<code>flies(tweety)</code> is provable gives about 0.45 (a finite sample
+lands nearby, for example 0.46), not 0.27: that
 count includes every world where the bird premise holds, even the worlds
 where "tweety is not a bird" holds alongside it, so the evidence against
 the premise changes nothing. The <i>four masses</i> mode instead arrives at
@@ -1711,10 +1742,12 @@ persistence default for that step. The rejected block shows the whole
 persistence chain with its two <code>unless</code> blockers.</p>
 <p>Steps such as <code>mp(1.1, 4)</code> use a decimal to name which
 literal of the earlier clause was resolved: the first literal of step 1.</p>
-<p>Try deleting John's second movement (the two lines above the movement
-rule): then <code>hallway</code> becomes a real answer at
-<code>0.99 * 0.99 = 0.9801</code>, the persistence default applied
-twice.</p></div>
+<p>Try deleting only the line <code>move(john, kitchen, s2, s3).</code>,
+keeping <code>next(s2, s3).</code>: then <code>hallway</code> becomes a real
+answer at <code>0.99 * 0.99 = 0.9801</code>, the persistence default applied
+twice. (Deleting the <code>next</code> line as well would remove the
+transition to <code>s3</code> altogether, and the query would have no
+answers.)</p></div>
 
 <div id="example_cs13_input_notes"><h3>Example 13: arithmetic</h3>
 <p>Ground arithmetic (<code>3 + 4 &lt; 10</code> etc) is evaluated during
@@ -1732,16 +1765,18 @@ books_to_pack(42).
 
 query(boxes_needed(Boxes)).
 
-% How many boxes of 6 hold all 42 books? Note the
-% strategy field under Advanced: it shows the arithmetic
-% setting used to find a numeric value for Boxes.</code></pre>
+% How many boxes of exactly 6 books each contain the
+% 42 books? Note the strategy field under Advanced: it
+% shows the arithmetic setting used to find a value for Boxes.</code></pre>
 <div id="example_cs13_proof_notes">
 <p>The answer is <code>7</code> with confidence 0.8 (the rule's own
 confidence). The proof shows the instantiation step where
 <code>Boxes = 7</code> makes <code>7 * 6 = 42</code> true.</p>
 <p>This is bounded search for satisfying values, not equation solving: it
 handles one unknown conservatively (<code>arith_instantiation: 1</code>), and
-mode 2 also tries selected two-variable cases.</p></div>
+mode 2 also tries selected two-variable cases. The rule encodes exact
+equality, not capacity: with 43 books no value of <code>Boxes</code>
+satisfies it, and there is no answer.</p></div>
 
 <div id="example_cs14_input_notes"><h3>Example 14: equality reasoning</h3>
 <p>The first fact defines a <i>function value</i>: the capital of Estonia is
@@ -1766,8 +1801,9 @@ question matches directly.</p></div>
 
 <div id="example_cs15_input_notes"><h3>Example 15: conflict sources in detail</h3>
 <p>Several sources give evidence about whether <code>tweety</code> is a bird
-&mdash; two sightings for, one doubt against &mdash; and rules derive flying
-from birdness in both directions. The detailed report (switched on for this
+&mdash; two sightings for, one doubt against. One rule supports flying from
+birdness; the other supports not flying from evidence that something is not
+a bird. The detailed report (switched on for this
 example) names which atom the conflict comes from. Note that confidences
 can also be written as percentages: <code>90</code> means 0.9.</p></div>
 <pre><code id="example_cs15_input_code">[
@@ -1823,8 +1859,11 @@ three inputs are translated to the same internal logic before proof search.</p><
 <div id="example_cs18_input_notes"><h3>Example 18: TPTP notation</h3>
 <p>gk also reads clause-normal-form problems in the
 <a href="https://tptp.org">TPTP</a> notation used by automated theorem
-provers, extended with a <code>confidence(...)</code> annotation in the source
-list. This example asks which object does not fly.</p></div>
+provers, extended with a <code>confidence(...)</code> annotation in the
+optional useful-info list of the <code>cnf(...)</code> form (the field after
+the source position). This example asks which object does not fly:
+extracting a value for the open variable is a gk convention layered on top
+of TPTP clause form, not part of TPTP semantics itself.</p></div>
 <pre><code id="example_cs18_input_code">% The basic birds example in GKTPTP: standard TPTP CNF, with gk's metadata
 % (confidence, blockers) in the optional useful_info field. This is a 1:1
 % translation of bird_penguin.js and bird_penguin.gkp: gk converts all three
@@ -1999,8 +2038,15 @@ holds(clear(Z),do(putdown(X,Y),State))
 query(goal(State)).</code></pre>
 <div id="example_cs20_proof_notes">
 <p>The answer is a situation term: read it inside-out, starting from
-<code>s0</code>, as the sequence of actions of the plan. Finding the first
-plan takes several seconds.</p></div>
+<code>s0</code>, as the sequence of actions of the plan. Decoded, the
+returned plan is:</p>
+<ol>
+<li>pick up <code>b</code></li>
+<li>put <code>b</code> on <code>a</code></li>
+<li>pick up <code>c</code></li>
+<li>put <code>c</code> on <code>b</code></li>
+</ol>
+<p>Finding the first plan takes several seconds.</p></div>
 
 <div id="example_cs21_input_notes"><h3>Example 21: logic generated from English</h3>
 <p>The input was machine-generated by the
@@ -2008,7 +2054,10 @@ plan takes several seconds.</p></div>
 pipeline, which uses a large language model to translate English to gk logic:
 the story is <i>"Penguins are birds. Penguins cannot fly. Birds can fly. John
 is a penguin. John flies?"</i>. Each clause carries its source sentence in the
-<code>@nl</code> field.</p>
+<code>@nl</code> field. The pipeline numbers each named entity, so
+<code>#:John 1</code> is the generated identifier for the first entity named
+John (the <code>#:</code> prefix marks a unique object) &mdash; not a typo in
+the input.</p>
 <p>The encoding uses events with actors and types rather than a simple
 <code>flies(john)</code> atom, so that the same scheme covers arbitrary verbs,
 and a shared background knowledge base (loaded automatically for this
@@ -2099,10 +2148,11 @@ source), as in the previous example.</p></div>
 {"@name": "frm_syn", "@logic": [["-has type", "?:E", "fly", "?:Fv43"], ["has type", "?:E", "go", "?:Fv43"]], "@confidence": 0.52, "@nl": "[generated: frm_syn]"}
 ]</code></pre>
 <div id="example_cs22_proof_notes">
-<p>The answer here is such an existential individual. Population clauses
-(marked <code>@sourcetype: "populate"</code>) supply typical members for the
-classes mentioned in the text, so that questions about "a fox" or "some bird"
-have witnesses to find.</p></div>
+<p>The answer is <code>$some_fox</code>, with confidence 1: an unnamed fox
+introduced as a representative member of its class. Population clauses
+(marked <code>@sourcetype: "populate"</code>) supply such typical members
+for the classes mentioned in the text, so that questions about "a fox" or
+"some bird" have witnesses to find.</p></div>
 
 <div id="example_cs23_input_notes"><h3>Example 23: taxonomy classification</h3>
 <p>Three objects with known parts: <code>h1</code> has a leg, <code>b1</code>
@@ -2144,10 +2194,15 @@ isa(X, organism)  :- isa(X, bird).
 query(isa(X, organism)).</code></pre>
 <div id="example_cs23_proof_notes">
 <p><code>b1</code> is an organism with confidence <code>0.5552</code>: the
-bird evidence from leg, wing and feathers cumulates to 0.936, and the
-opposing airplane default (0.4, from the wing) nets against it. The answer is
+bird evidence from leg, wing and feathers cumulates to 0.936, the
+independent human evidence (0.3, from the leg) joins it &mdash;
+<code>1 - (1 - 0.936)(1 - 0.3) = 0.9552</code> &mdash; and the opposing
+airplane default (0.4, from the wing) nets against that:
+<code>0.9552 - 0.4 = 0.5552</code>. The answer is
 reported through both its human-default and bird-default derivations, with
-the <code>tax(...)</code> blockers listed.</p>
+the <code>tax(...)</code> blockers listed. Each block is one derivation
+family, and every block is headed by the same aggregate confidence &mdash;
+not by the share contributed by the proof shown inside it.</p>
 <p><code>h1</code> follows with confidence <code>0.44</code>: the human (0.3)
 and bird (0.2) leg-defaults cumulate to <code>1 - 0.7 * 0.8 = 0.44</code>.</p>
 <p><code>a1</code> is a rejected answer with confidence against 1: the wing
