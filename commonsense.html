@@ -1277,15 +1277,40 @@ threshold applies to the evidence for and against the atom. This mode runs
 no proof search and finishes immediately, but accepts a narrower class of
 inputs: a question without variables and rules with a single conclusion.</li>
 </ul>
-<p>The sampled number and gk's number often agree, and agreement supports
-the probability reading of that example. They can also differ for
-understood reasons: gk may net the evidence on a contested premise before
-using it, while sampling counts the worlds in which the premise is provable
-(the <i>contested premises</i> example shows this); a recursive rule can
-succeed through many different sampled paths while gk reports the evidence
-of a selected proof; and defaults with priorities are sampled only in the
-documented cases. A difference is a property of the example worth
-understanding, not a malfunction.</p>
+<p><b>When the two numbers differ.</b> The solver and the sampling check
+often agree, and agreement supports reading the confidences as chances.
+When they differ, neither number is a mistake &mdash; they answer different
+questions. The solver weighs arguments: it builds the best proof for an
+answer and the best proof against it, and reports what remains of the
+support once the opposition is subtracted. The sampling check plays out
+scenarios: it treats each confidence as the chance that the statement
+holds, deals out many random scenarios, and counts in how many the answer
+can be derived, minus how many where its opposite can.</p>
+<p>Two examples on this page show the two ways they can pull apart.</p>
+<p>In <i>an exception</i> (example 9), the solver reports Tweety flying at
+0.1: the flying default was worth 1 and the 0.9 against it is subtracted.
+The sampling check reports about &minus;0.8: in 90 of 100 scenarios the
+evidence against Tweety exists, and there "Tweety does not fly" is itself
+provable; in the other 10 the default goes through. The sampled table shows
+both ingredients &mdash; provable in 0.1 of the worlds, the negation
+provable in 0.9 &mdash; so the solver's number is the first column, and the
+sampled net is the difference of the two. One summarizes the surviving
+support, the other the overall balance.</p>
+<p>In <i>contested premises</i> (example 7), the solver reports 0.27: it
+first weighs the bird question on its own &mdash; 0.5 for, 0.2 against
+leaves 0.3 &mdash; and lets only that survivor feed the flying rule. The
+sampling check reports about 0.45, because "Tweety is not a bird" never
+makes "Tweety does not fly" derivable, so in a scenario count the doubt
+changes nothing. Here the solver is deliberately the more cautious: doubt
+about a premise reduces every conclusion built on it.</p>
+<p>Two further sources of difference: a recursive rule can succeed through
+many different sampled paths while the solver reports the evidence of a
+selected proof, and defaults with priorities are sampled only in the
+documented cases. Use the solver's number as an assessment of the
+arguments, the sampled number as a scenario frequency, and a difference
+between them as a pointer to something worth understanding in the example
+&mdash; usually an exception, contested evidence, or competing
+defaults.</p>
 <p>Sampling needs a small, finite input: constants only, no function terms,
 no arithmetic or equality, no background knowledge base. Of the examples on
 this page, 1&ndash;12 and 15&ndash;19 qualify (12 grounds into many clauses
