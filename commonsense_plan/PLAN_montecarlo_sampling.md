@@ -570,6 +570,69 @@ in `commonsense.html`, `mc_check.js` + `mc_check_ref.json` (harness).
    extension was not connected: examples 3, 4, 7, 10, 13, 21, the Stop and
    Solve-during-sampling cases, and a repeat run giving identical numbers.
 
+## 10. Second pass (2026-07-21, audit and revision)
+
+A follow-up pass fixed the gk bug at its source, audited the first
+implementation, and reworked the page per `/opt/gkreasoner/tmp3_notes.txt`.
+
+1. **gk 1.0.3.** The database leak of note 9.8 is fixed in gk itself: six
+   returns in the proving path of `Main/gk.c` (the two "no answers found"
+   returns and four input-error returns) now run the same
+   `__EMSCRIPTEN__` cleanup as the normal exit. Measured with the same
+   world input: the old wasm died of OOM on the 6th consecutive
+   "no answers found" call at the default database size; the new one ran
+   500 clean. gk quick audit 16/16 plus the doc check. The deployed
+   `gkjs.js`/`gkjs.wasm` are the 1.0.3 build (1000&nbsp;MB); the mac and
+   Windows binaries and the release are deliberately deferred.
+2. **Sampler simplification.** The leak budgeting (`LEAK_BUDGET_MB`,
+   `-mbsize 20` on world runs) is removed; worker retirement remains as a
+   pure backstop on `Module.onAbort`, so a future regression degrades to
+   slower sampling instead of a dead run. Examples 11, 15 and 18 now run
+   restart-free.
+3. **Audit findings, fixed.** (a) gk answers `false` (with full detail) for
+   a net-negative ground query, and the reference parse dropped it, leaving
+   the *gk reports* column empty; such answers are now kept under the
+   question's key, marked, and rendered as "0.7 against". The Python tool
+   has the same blind spot. (b) The multi-clause split warning printed the
+   first clause's confidence as if all clauses shared it, and did not fire
+   at all when the first split clause happened to be certain; it now lists
+   the per-clause values. (c) Notes reported by several workers were shown
+   once per worker; deduplicated.
+4. **The eligible-example list, re-measured after the example revisions:**
+   1&ndash;12 and 15&ndash;19 sample (12 grounds into ~20k clauses at about
+   a second per world, and the progress line says so); 13 (arithmetic),
+   14 (equality), 20 (function terms) refuse; 21&ndash;23 are refused
+   page-side by their presets. The modal states this set.
+5. **tmp3_notes.txt applied:** the page is *Reasoning under uncertainty*
+   (tab *Uncertainty*, JSON capitalised across all pages, https metadata,
+   URL unchanged); new intro; example notes moved above the editor; the
+   menus grouped with optgroups and reordered; *syntax* became a five-part
+   *help* area with the authorship paragraph at its end; *show derived* and
+   the print-level selector removed and *detail report* made a checkbox; a
+   strategy-reference link added; the what/confidences/defaults modals
+   rewritten per the notes; the empty-state line under Result added; the
+   About page gained a Reasoning-under-uncertainty section. Examples: 6 is
+   the weather version of shared evidence, 12 the bAbI-style
+   inertia/frame-problem example, 13 the books-and-boxes arithmetic, 14 the
+   capital-of-Estonia equality, 19 shows the GKP equivalent instead of ASP,
+   21/22 explain `$ctxt` and link llmpipe, and the anonymous constants are
+   named (tweety, robin, pingu, nixon). Examples 7 and 18 carry notes
+   pointing at the sampling check and its intended disagreement with gk's
+   netting.
+6. **Not done, deliberately:** the gk-side proof-presentation changes of
+   the notes (unpadded proof lines, `-flies(a)` for single-negative-literal
+   clauses, `input(3)` naming) change gk's printed output and would break
+   the golden-output batteries in the gk repository; they belong to a
+   gk-side pass with those baselines regenerated. The decimal-reference and
+   `goal(...)` explanations the notes asked for are covered as text in the
+   help area and the reading-the-output modal.
+7. **Verification:** commonsense_check 23/23 against the 1.0.3 wasm with
+   the revised examples and the page's new argument lists; mc_check green
+   on every revised expectation (values unchanged under renaming, keys
+   renamed, ex12 checked for eligibility and its four-mass refusal);
+   headless-Chrome runs of the revised examples and sampling paths;
+   layout screenshots of the redesigned page and help area.
+
 ## 11. Out of scope (do not do)
 
 - No changes to gk/gkc C sources, no `-mc` flag, no wasm rebuild, no
