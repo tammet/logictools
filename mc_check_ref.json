@@ -1,0 +1,146 @@
+{
+ "_comment": "Reference values for mc_check.js, produced by the Python implementation in /opt/gkreasoner/montecarlo on the same page examples: incl = gkmc.py pos-neg per answer at 4000 trials, seed 1; thr = threshold_worlds.py four masses [for, against, conflict, ignorance] at 100000 draws, seed 1. GKP examples were converted with `gk EX -writejson`. Regenerate when the reference implementation changes.",
+ "1": {
+  "incl": {
+   "polly": 1.0
+  },
+  "trials": 4000
+ },
+ "2": {
+  "incl": {
+   "yes": 0.5577
+  },
+  "thr": [
+   0.5579,
+   0.0,
+   0.0,
+   0.4421
+  ],
+  "trials": 4000
+ },
+ "3": {
+  "incl": {
+   "yes": 0.804
+  },
+  "thr": [
+   0.7983,
+   0.0,
+   0.0,
+   0.2017
+  ],
+  "trials": 4000
+ },
+ "4": {
+  "incl": {
+   "yes": 0.3065
+  },
+  "thr": [
+   0.3016,
+   0.0,
+   0.3985,
+   0.2998
+  ],
+  "trials": 4000
+ },
+ "5": {
+  "incl": {
+   "yes": 0.3705
+  },
+  "thr": [
+   0.3787,
+   0.0,
+   0.0,
+   0.6213
+  ],
+  "trials": 4000
+ },
+ "6": {
+  "incl": {
+   "yes": 0.8462
+  },
+  "thr": [
+   0.8441,
+   0.0,
+   0.0,
+   0.1558
+  ],
+  "trials": 4000
+ },
+ "7": {
+  "incl": {
+   "yes": 0.452
+  },
+  "thr": [
+   0.2701,
+   0.0,
+   0.0,
+   0.7299
+  ],
+  "trials": 4000
+ },
+ "8": {
+  "incl": {
+   "a": 1.0,
+   "b": 1.0
+  },
+  "trials": 4000
+ },
+ "9": {
+  "incl": {
+   "a": -0.7955,
+   "b": 1.0
+  },
+  "trials": 4000
+ },
+ "10": {
+  "incl": {
+   "b": 1.0
+  },
+  "trials": 4000
+ },
+ "11": {
+  "trials": 4000
+ },
+ "15": {
+  "incl": {
+   "a": 0.2505
+  },
+  "trials": 4000
+ },
+ "16": {
+  "incl": {
+   "yes": 0.5577
+  },
+  "thr": [
+   0.5579,
+   0.0,
+   0.0,
+   0.4421
+  ],
+  "trials": 4000
+ },
+ "17": {
+  "incl": {
+   "yes": 0.5577
+  },
+  "thr": [
+   0.5579,
+   0.0,
+   0.0,
+   0.4421
+  ],
+  "trials": 4000
+ },
+ "18": {
+  "incl": {
+   "p": 0.6435
+  },
+  "trials": 4000
+ },
+ "19": {
+  "incl": {
+   "yes": 1.0
+  },
+  "trials": 4000
+ }
+}
