@@ -767,8 +767,8 @@ function clearInput(el) {
     </div>
     <div class="navbar-collapse collapse">
       <ul class="nav navbar-nav">
-        <li class="dummy"><a href="index.html">Predicate logic</a></li>
         <li class="active"><a href="commonsense.html">Uncertainty</a></li>
+        <li class="dummy"><a href="index.html">Predicate logic</a></li>
         <li class="dummy"><a href="prop.html">Propositional logic</a></li>
         <li class="dummy"><a href="json.html">JSON</a></li>
         <li class="dummy"><a href="download.html">Download</a></li>
@@ -833,11 +833,11 @@ query(flies(X)).</textarea>
         style="width: 70px;">Solve</button>
         <button onclick="stopSolve(this); return false;" class="btn btn-small btn-default"
         style="width: 55px;">Stop</button>
-        <div style="display: inline-block; width: 50px; text-align: center;">examples</div>
-        <select class="form-control" style="width: 180px;" id="select_example"
+        <div style="display: inline-block; margin: 0 6px;">examples</div>
+        <select class="form-control" style="width: 160px;" id="select_example"
           aria-label="introductory examples" onchange="selectExample('simple')">
           <option value="examples">examples</option>
-          <optgroup label="Basics and confidence">
+          <optgroup label="Basics">
             <option value="1">facts, rules, a default</option>
             <option value="2">confidences</option>
             <option value="3">several sources</option>
@@ -846,7 +846,7 @@ query(flies(X)).</textarea>
             <option value="6">shared evidence</option>
             <option value="7">contested premises</option>
           </optgroup>
-          <optgroup label="Defaults and exceptions">
+          <optgroup label="Defaults, exceptions">
             <option value="8">defaults</option>
             <option value="9">an exception</option>
             <option value="10">penguins</option>
@@ -854,7 +854,7 @@ query(flies(X)).</textarea>
             <option value="12">where is John</option>
           </optgroup>
         </select>
-        <select class="form-control" style="width: 150px;" id="select_advanced_example"
+        <select class="form-control" style="width: 140px;" id="select_advanced_example"
           aria-label="further examples" onchange="selectExample('advanced')">
           <option value="examples">more examples</option>
           <optgroup label="Input formats">
@@ -868,18 +868,18 @@ query(flies(X)).</textarea>
             <option value="14">equality</option>
             <option value="15">conflict detail</option>
             <option value="20">planning (slow)</option>
-            <option value="23">taxonomy classification</option>
+            <option value="23">classification</option>
           </optgroup>
-          <optgroup label="Generated from English">
+          <optgroup label="From English">
             <option value="21">English: penguins</option>
             <option value="22">English: which one</option>
           </optgroup>
         </select>
-        <div style="display: inline-block; width: 28px; text-align: center;">or</div>
+        <div style="display: inline-block; margin: 0 4px;">or</div>
         <span class="btn btn-default btn-file">
         Browse<input type="file" id="files" name="files" value="">
         </span>
-        <div style="display: inline-block; width: 30px;  margin-left: 10px;"></div>
+        <div style="display: inline-block; width: 12px;"></div>
         <button onclick="switchAdvanced(); return false;"
           class="btn btn-small btn-default"
         >Advanced</button>
