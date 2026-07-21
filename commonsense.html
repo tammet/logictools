@@ -647,7 +647,10 @@ function mcRenderThreshold(msg) {
           "counts only if its combined confidence clears a threshold. Plain " +
           "evidence for and against the same atom faces the same threshold, " +
           "while a default and the evidence for its exception each get their " +
-          "own. Compare with the detailed report of an ordinary solve.</p>";
+          "own. The worlds selection does not apply to this mode: a draw " +
+          "runs no proof search and is nearly free, so it always uses " +
+          MC_THRESHOLD_DRAWS + " draws. Compare with the detailed report " +
+          "of an ordinary solve.</p>";
   if (msg.priorityNote) r.notes.push(msg.priorityNote);
   html += mcNotesHtml();
   mcTeardown();
@@ -680,6 +683,25 @@ function mcPairedDiffCi(posOnly, negOnly, n) {
 
 function switchAdvanced() { $('#advanced_buttons').slideToggle('slow'); }
 
+// The worlds selection applies only to the world counts: a four-mass draw
+// runs no proof search and is nearly free, so that mode always uses
+// MC_THRESHOLD_DRAWS draws. While four masses is selected, the worlds
+// selector is greyed out and shows "automatic"; the previous choice is
+// restored on switching back.
+var mcTrialsBefore = "1000";
+
+function mcMethodChanged() {
+  var t = gid("mc_trials");
+  if (gid("mc_method").value === "threshold") {
+    if (t.value !== "auto") mcTrialsBefore = t.value;
+    t.value = "auto";
+    t.disabled = true;
+  } else {
+    if (t.value === "auto") t.value = mcTrialsBefore;
+    t.disabled = false;
+  }
+}
+
 // the defaults shown in the fields: gk's own -confidence default, and the
 // distinct-answer count its answer-collection limit stops at
 function resetAdvanced() {
@@ -690,6 +712,8 @@ function resetAdvanced() {
   gid("strategy").value = "";
   gid("mc_method").value = "subtract";
   gid("mc_trials").value = "1000";
+  mcTrialsBefore = "1000";
+  mcMethodChanged();
 }
 
 function applyPreset(p) {
@@ -834,7 +858,7 @@ query(flies(X)).</textarea>
         <button onclick="stopSolve(this); return false;" class="btn btn-small btn-default"
         style="width: 55px;">Stop</button>
         <div style="display: inline-block; margin: 0 6px;">examples</div>
-        <select class="form-control" style="width: 160px;" id="select_example"
+        <select class="form-control" style="width: 170px;" id="select_example"
           aria-label="introductory examples" onchange="selectExample('simple')">
           <option value="examples">examples</option>
           <optgroup label="Basics">
@@ -903,16 +927,17 @@ query(flies(X)).</textarea>
           <div style="padding-top: 15px;">
             <div style="display: inline-block; width: 62px; text-align: center;">sampling</div>
             <select class="form-control" style="width: 160px;" id="mc_method"
-              aria-label="sampling method">
+              aria-label="sampling method" onchange="mcMethodChanged()">
               <option value="subtract">world counts</option>
               <option value="threshold">four masses</option>
             </select>
             <div style="display: inline-block; width: 50px; text-align: center;">worlds</div>
-            <select class="form-control" style="width: 90px;" id="mc_trials"
+            <select class="form-control" style="width: 100px;" id="mc_trials"
               aria-label="number of sampled worlds">
               <option value="300">300</option>
               <option value="1000" selected>1000</option>
               <option value="10000">10000</option>
+              <option value="auto" hidden>automatic</option>
             </select>
             <button onclick="useSampling(this); return false;"
               class="btn btn-small btn-primary" style="width: 80px; margin-left: 10px;">Sample</button>
@@ -1311,7 +1336,9 @@ for and against the same atom faces the same threshold, so the two compete
 for one bar and their overlap is the conflict. A default and the evidence
 for its exception instead get a threshold each, so each side counts only
 where the other missed &mdash; which is how the solver treats them. This
-mode runs no proof search and finishes immediately, but accepts a narrower
+mode runs no proof search and finishes immediately; since its draws are
+nearly free it always uses 100000 of them, and the <i>worlds</i> selection
+does not apply. It accepts a narrower
 class of inputs: a question without variables and rules with a single
 conclusion.</li>
 </ul>
