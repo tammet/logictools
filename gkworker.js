@@ -12,8 +12,16 @@ var gkout = "";
 var job = null;
 var ready = false;
 
+// The solver files are cached by the browser like any other file, and a
+// cached older pair would answer with an older gk. Both are therefore
+// fetched under the build version: the loader below carries it in its own
+// URL, locateFile puts it on the .wasm request the loader makes. Raise it
+// whenever gkjs.js/gkjs.wasm are replaced.
+var GK_BUILD = "1.0.6";
+
 var Module = {
   noInitialRun: true,
+  locateFile: function (p) { return p + "?v=" + GK_BUILD; },
   print: function (s) { gkout += s + "\n"; },
   printErr: function (s) { /* wasm diagnostics are not part of the answer */ },
   onRuntimeInitialized: function () { ready = true; maybeRun(); }
@@ -41,4 +49,4 @@ function maybeRun() {
   self.postMessage({ output: gkout });
 }
 
-importScripts("gkjs.js");
+importScripts("gkjs.js?v=" + GK_BUILD);

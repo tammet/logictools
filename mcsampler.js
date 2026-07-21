@@ -10,16 +10,18 @@
 //     answer's negation is provable (gk's own pos-neg functional).
 //
 //   threshold sampling  -- the four masses support_for / support_against /
-//     conflict / ignorance. One random acceptance threshold per ground atom;
-//     evidence counts only when its pooled confidence clears the threshold,
-//     the same threshold for the evidence on both sides. Runs no proof
-//     search at all.
+//     conflict / ignorance. Each ground atom draws two independent
+//     acceptance bars; evidence counts only when its pooled confidence
+//     clears a bar. Plain opposed evidence about one atom faces one shared
+//     bar (gk's netting), while a default and its counter-evidence gate each
+//     other through both bars (gk's settled defaults arithmetic). Runs no
+//     proof search at all.
 //
 // This is a port of the reference implementation in the gkreasoner
 // repository: montecarlo/gkmc.py (inclusion) and montecarlo/threshold_worlds.py
 // (threshold). Each block below names the Python function it ports. The
 // semantics are the Python ones; where the browser pipeline has to differ,
-// the comment says so. The two documented differences are:
+// the comment says so. The documented differences are:
 //
 //   * clauses and confidences come from gk's versioned clause export
 //     (-defworlds -clausify -outformat json) instead of from a re-parse of
@@ -28,7 +30,11 @@
 //   * the export's confidences are post-root-split (a statement splitting
 //     into k clauses carries the split values, whose product is the stated
 //     confidence), where gkmc.py reuses the unsplit statement confidence for
-//     every clause and warns about it.
+//     every clause and warns about it;
+//   * threshold mode scores one closed query. The reference runner also
+//     evaluates an OPEN query, one closed instance at a time over the named
+//     constants; the page's four-mass panel shows a single table, so an open
+//     query is refused here instead.
 //
 // One module instance decides many worlds: gk frees its database when main
 // returns, and repeated callMain with IDENTICAL flags is safe. gk does not
@@ -52,8 +58,14 @@ var gkLoading = false;
 var gkWaiting = [];
 var moduleDead = false;       // the solver aborted; this worker must be replaced
 
+// the browser caches the solver files like any other file: both are fetched
+// under the build version, so a cached older pair is not paired with this
+// worker (the node harness goes through HOST and never uses this Module)
+var GK_BUILD = "1.0.6";
+
 var Module = {
   noInitialRun: true,
+  locateFile: function (p) { return p + "?v=" + GK_BUILD; },
   print: function (s) { gkout += s + "\n"; },
   printErr: function (s) { /* wasm diagnostics are not part of the answer */ },
   onAbort: function (what) { moduleDead = true; },
@@ -69,7 +81,7 @@ function gkEnsure(cb) {
   if (HOST) { HOST.init(cb); return; }
   if (gkReady) { cb(); return; }
   gkWaiting.push(cb);
-  if (!gkLoading) { gkLoading = true; importScripts("gkjs.js"); }
+  if (!gkLoading) { gkLoading = true; importScripts("gkjs.js?v=" + GK_BUILD); }
 }
 
 // Write the given files into the in-memory filesystem, run gk with args,
@@ -865,10 +877,13 @@ function present(t, state) {
 }
 
 // Port of threshold_worlds._pools: pooled pro/con strengths of the PRESENT
-// testimonies, the paired-exception residual fill, and each side's
-// mutual-block priority.
+// testimonies, the paired-exception residual fill, and each side's netting
+// rank. A side's rank is the maximum mutual-block rank of its present
+// testimonies when EVERY present testimony on that side carries one (a gated
+// default); it is 0 as soon as the side has one present plain (unranked)
+// testimony, and -1 while the side has no present testimony at all.
 function poolsOf(ts, state) {
-  var pro = [], con = [], filled = false, priPro = 0, priCon = 0, i, j;
+  var pro = [], con = [], filled = false, rankPro = -1, rankCon = -1, i, j;
   var mainProBlocked = false;
   for (i = 0; i < ts.length; i++)
     if (ts[i].headSign === "+" && ts[i].blockers.length && !present(ts[i], state))
@@ -876,14 +891,15 @@ function poolsOf(ts, state) {
   for (i = 0; i < ts.length; i++) {
     var t = ts[i];
     if (!present(t, state)) continue;
+    var trank = 0;
+    for (j = 0; j < t.mutual.length; j++)
+      trank = Math.max(trank, t.mutual[j].prio);
     if (t.headSign === "+") {
       pro.push(t.strength);
-      for (j = 0; j < t.mutual.length; j++)
-        priPro = Math.max(priPro, t.mutual[j].prio);
+      rankPro = (trank < 1 || rankPro === 0) ? 0 : Math.max(rankPro, trank);
     } else {
       con.push(t.strength);
-      for (j = 0; j < t.mutual.length; j++)
-        priCon = Math.max(priCon, t.mutual[j].prio);
+      rankCon = (trank < 1 || rankCon === 0) ? 0 : Math.max(rankCon, trank);
       if (t.pairedMain && mainProBlocked) filled = true;
     }
   }
@@ -892,19 +908,47 @@ function poolsOf(ts, state) {
   a = 1 - a;
   for (i = 0; i < con.length; i++) b *= (1 - con[i]);
   b = 1 - b;
-  return { a: a, b: b, filled: filled, priPro: priPro, priCon: priCon };
+  return { a: a, b: b, filled: filled, rankPro: rankPro, rankCon: rankCon };
 }
 
 // Port of threshold_worlds._net: (pro_usable, con_usable, conflict) for one
-// atom in one world.
-function netOf(p, ul) {
+// atom in one world. u2 = [uPro, uCon]: two independent uniforms per atom.
+// Plain contests use the SHARED bar uPro for both sides (the netting of
+// opposed evidence); the mutual-gate cases use both bars:
+//
+//   both sides gated, unequal ranks -> the award on the shared bar (the
+//     higher-ranked side takes the overlap, the lower keeps its excess);
+//   both sides gated, equal ranks   -> the symmetric mutual gate: each side
+//     fires on its own bar and survives only if the other missed;
+//   one side gated                  -> the one-sided exclusive gate: the
+//     plain side fires on its own bar, the gated side survives only off the
+//     plain side's mass; no conflict mass (the regions are exclusive).
+//
+// The independent second bar is what makes for = a(1-b) a product; a single
+// shared bar cannot express it.
+function netOf(p, u2) {
+  var ul = u2[0], ur = u2[1];
   var lo = Math.min(p.a, p.b);
-  // priority overlap award: the strictly higher side takes the conflict
-  // region U <= min(a,b); the lower keeps only its excess.
-  if (p.priPro !== p.priCon && lo > 0) {
-    if (p.priPro > p.priCon)
+  var gatedPro = (p.rankPro >= 1), gatedCon = (p.rankCon >= 1);
+  if (p.a > 0 && p.b > 0 && gatedPro && gatedCon && p.rankPro !== p.rankCon) {
+    if (p.rankPro > p.rankCon)
       return { pro: ul <= p.a, con: p.a < ul && ul <= p.b, conflict: false };
     return { pro: p.b < ul && ul <= p.a, con: ul <= p.b, conflict: false };
+  }
+  if (p.a > 0 && p.b > 0 && gatedPro && gatedCon) {
+    // equal ranks: both-fire and neither-fire are ignorance (the certain
+    // limit is the Nixon standoff)
+    var fp = ul <= p.a, fc = ur <= p.b;
+    return { pro: fp && !fc, con: fc && !fp, conflict: false };
+  }
+  if (p.a > 0 && p.b > 0 && gatedPro) {
+    var fc1 = ur <= p.b;
+    return { pro: (ul <= p.a) && !fc1, con: fc1, conflict: false };
+  }
+  if (p.a > 0 && p.b > 0 && gatedCon) {
+    // mirror: the refuting side is the gated one
+    var fp1 = ul <= p.a;
+    return { pro: fp1, con: (ur <= p.b) && !fp1, conflict: false };
   }
   var pro = (p.b < ul && ul <= p.a);
   var con = (p.a < ul && ul <= p.b);
@@ -1014,7 +1058,7 @@ function sccs(deps, atomKeys) {
 // dependency-first order. The per-world fixpoint is monotone -- hence unique
 // and equal to the derivability reading -- ONLY when the cycle contains no
 // blocker and no contested atom, so any other cyclic group is not scored.
-function sccPlan(testimonies, atoms, byHead) {
+function sccPlan(testimonies, atoms, byHead, queryAtom) {
   var atomKeys = Object.keys(atoms).sort();
   var deps = atomDeps(testimonies, atoms);
   var plan = [];
@@ -1031,17 +1075,60 @@ function sccPlan(testimonies, atoms, byHead) {
         return { plan: null, why: "contested atom " + atomText(atoms[comp[i]]) +
                                   " inside a dependency cycle" };
     }
+    var hasBlocker = false;
     for (i = 0; i < testimonies.length; i++) {
       var t = testimonies[i];
       if (!cset[t.headAtom.k]) continue;
       for (var b = 0; b < t.blockers.length; b++)
-        if (cset[t.blockers[b].atom.k])
-          return { plan: null, why: "blocker on " +
-                   atomText(t.blockers[b].atom) + " inside a dependency cycle" };
+        if (cset[t.blockers[b].atom.k]) hasBlocker = true;
+    }
+    if (hasBlocker) {
+      // a blocker cycle that runs through the QUERY atom resolves credulously
+      // for the query: gk's blocker check voids an exception argument whose
+      // own validity depends on defeating the queried candidate. Away from
+      // the query there is no such reference point, so it stays unscored.
+      if (queryAtom && cset[queryAtom.k]) {
+        plan.push(["credulous"].concat(comp.slice().sort()));
+        continue;
+      }
+      return { plan: null, why: "blocker cycle away from the query atom; the " +
+               "credulous resolution is defined relative to the query only" };
     }
     plan.push(comp.slice().sort());
   }
   return { plan: plan, why: null };
+}
+
+// Port of threshold_worlds._eval_scc_credulous: the query atom first with
+// every in-group blocker voided, then the remaining atoms by fixpoint given
+// that committed state, so the defeated side of the loop comes out blocked.
+function evalSccCredulous(comp, queryAtom, byHead, state, u) {
+  var cset = {}, i, j;
+  for (i = 0; i < comp.length; i++) { cset[comp[i]] = 1; state[comp[i]] = [false, false]; }
+  var ts = byHead[queryAtom.k] || [], stripped = [];
+  for (i = 0; i < ts.length; i++) {
+    var t = ts[i], blk = [];
+    for (j = 0; j < t.blockers.length; j++)
+      if (!cset[t.blockers[j].atom.k]) blk.push(t.blockers[j]);
+    if (blk.length === t.blockers.length) stripped.push(t);
+    else stripped.push({ headAtom: t.headAtom, headSign: t.headSign,
+                         strength: t.strength, body: t.body, blockers: blk,
+                         mutual: t.mutual, pairedMain: t.pairedMain });
+  }
+  state[queryAtom.k] = evalAtom(stripped, state, u, queryAtom.k);
+  var rest = [];
+  for (i = 0; i < comp.length; i++)
+    if (comp[i] !== queryAtom.k) rest.push(comp[i]);
+  for (var pass = 0; pass < 2 * comp.length + 2; pass++) {
+    var changed = false;
+    for (i = 0; i < rest.length; i++) {
+      var nw = evalAtom(byHead[rest[i]] || [], state, u, rest[i]);
+      var old = state[rest[i]];
+      if (nw[0] !== old[0] || nw[1] !== old[1]) { state[rest[i]] = nw; changed = true; }
+    }
+    if (!changed) return;
+  }
+  throw new Error("credulous fixpoint failed to converge");
 }
 
 // Port of threshold_worlds._eval_scc_fixpoint: least fixpoint of one
@@ -1063,29 +1150,6 @@ function evalSccFixpoint(comp, byHead, state, u) {
     if (!changed) return;
   }
   throw new Error("fixpoint failed to converge on a monotone component");
-}
-
-// Port of threshold_worlds._has_unequal_mutual: an atom whose two sides are
-// stated by mutual blockers at UNEQUAL strengths is not settled by this
-// model; it is scored with the priority award and flagged.
-function hasUnequalMutual(testimonies, atoms) {
-  var byAtom = {}, i, j;
-  for (i = 0; i < testimonies.length; i++) {
-    var t = testimonies[i];
-    if (!t.mutual.length) continue;
-    if (!byAtom[t.headAtom.k]) byAtom[t.headAtom.k] = {};
-    if (!byAtom[t.headAtom.k][t.headSign]) byAtom[t.headAtom.k][t.headSign] = [];
-    for (j = 0; j < t.mutual.length; j++)
-      byAtom[t.headAtom.k][t.headSign].push(t.mutual[j].prio);
-  }
-  for (var k in byAtom) if (Object.prototype.hasOwnProperty.call(byAtom, k)) {
-    var sides = byAtom[k];
-    var pro = sides["+"] ? Math.max.apply(null, sides["+"]) : 0;
-    var con = sides["-"] ? Math.max.apply(null, sides["-"]) : 0;
-    if (sides["+"] && sides["-"] && pro !== con && Math.min(pro, con) > 0)
-      return atoms[k];
-  }
-  return null;
 }
 
 // Port of threshold_worlds._has_rank_restricted_blocker: a blocker check at
@@ -1127,20 +1191,26 @@ function thresholdEvaluate(pool, queryAtom, querySign, trials, seed) {
   var order = topoOrder(deps, atomKeys);
   var plan = null;
   if (order === null) {
-    var sp = sccPlan(testimonies, atoms, byHead);
-    // a cycle through a blocker or a contested atom has no unique fixpoint,
-    // so the model declines instead of guessing (the page prints the reason)
+    var sp = sccPlan(testimonies, atoms, byHead, queryAtom);
+    // a cycle through a contested atom, or through a blocker away from the
+    // query, has no unique fixpoint, so the model declines instead of
+    // guessing (the page prints the reason)
     if (sp.plan === null) return { notScored: sp.why };
     plan = sp.plan;
   }
 
-  var priorityAtom = hasUnequalMutual(testimonies, atoms);
+  // unequal mutual ranks are settled: the award is the adjudicated reading
+  // and needs no annotation. The rank-restricted DISTINCT-atom check remains
+  // annotated: this model carries a testimony's own mutual rank, not a
+  // derivation-deep guard.
   var rankNote = hasRankRestrictedBlocker(testimonies, byHead);
   var tally = { forr: 0, against: 0, conflict: 0, ignorance: 0 };
   var rng = mulberry32(fnv1a32(String(seed)));
   for (var trial = 0; trial < trials; trial++) {
     var u = {};
-    for (i = 0; i < atomKeys.length; i++) u[atomKeys[i]] = rng();
+    // two independent bars per atom, in a canonical order so that the seed
+    // fully determines them
+    for (i = 0; i < atomKeys.length; i++) u[atomKeys[i]] = [rng(), rng()];
     var state = {};
     if (order !== null) {
       for (i = 0; i < order.length; i++)
@@ -1150,6 +1220,8 @@ function thresholdEvaluate(pool, queryAtom, querySign, trials, seed) {
         if (plan[i].length === 1)
           state[plan[i][0]] = evalAtom(byHead[plan[i][0]] || [], state, u,
                                        plan[i][0]);
+        else if (plan[i][0] === "credulous")
+          evalSccCredulous(plan[i].slice(1), queryAtom, byHead, state, u);
         else evalSccFixpoint(plan[i], byHead, state, u);
       }
     }
@@ -1167,11 +1239,7 @@ function thresholdEvaluate(pool, queryAtom, querySign, trials, seed) {
     conflict: tally.conflict / trials,
     ignorance: tally.ignorance / trials
   };
-  if (priorityAtom)
-    out.priorityNote = "atom " + atomText(priorityAtom) + " uses a " +
-      "mutual-block priority encoding; scored with the higher-strength side " +
-      "taking the overlap; the other reading is not settled by this model";
-  else if (rankNote)
+  if (rankNote)
     out.priorityNote = "the blocker check at priority " + rankNote.check +
       " targets " + atomText(rankNote.atom) + ", whose support is protected " +
       "at the lower priority " + rankNote.protect + ": gk restricts that " +

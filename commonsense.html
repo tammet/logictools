@@ -290,8 +290,14 @@ function mcTeardown() {
   mcRun = null;
 }
 
+// the worker script is cached by the browser like any other file, and a
+// cached copy of an older sampler would answer with an older model: the
+// version below is raised whenever mcsampler.js changes in a way that
+// changes its numbers
+var MC_SAMPLER_VERSION = "2026-07-21";
+
 function mcSpawn(idx) {
-  var w = new Worker("mcsampler.js");
+  var w = new Worker("mcsampler.js?v=" + MC_SAMPLER_VERSION);
   w.onmessage = function (ev) { mcMessage(idx, ev.data); };
   w.onerror = function (e) {
     if (!mcRun) return;
@@ -637,10 +643,11 @@ function mcRenderThreshold(msg) {
             mcNum(msg[fields[i][1]]) + "</td><td>" + gkv + "</td></tr>";
   }
   html += "</table>";
-  html += "<p>One random acceptance threshold per ground atom; evidence " +
-          "counts only if its combined confidence clears the threshold, the " +
-          "same threshold for both sides. Compare with the detailed report of " +
-          "an ordinary solve.</p>";
+  html += "<p>Two random acceptance thresholds per ground atom; evidence " +
+          "counts only if its combined confidence clears a threshold. Plain " +
+          "evidence for and against the same atom faces the same threshold, " +
+          "while a default and the evidence for its exception each get their " +
+          "own. Compare with the detailed report of an ordinary solve.</p>";
   if (msg.priorityNote) r.notes.push(msg.priorityNote);
   html += mcNotesHtml();
   mcTeardown();
@@ -1274,11 +1281,15 @@ per world in your browser, so thousands of worlds take up to a few
 minutes; the 95% interval in the result shows the sampling precision.</li>
 <li><b>Four masses</b> estimates the split shown by the detailed report:
 support for, support against, conflict and ignorance. Each ground atom
-draws one random acceptance threshold between 0 and 1; a piece of evidence
-counts only if its combined confidence clears the threshold, and the same
-threshold applies to the evidence for and against the atom. This mode runs
-no proof search and finishes immediately, but accepts a narrower class of
-inputs: a question without variables and rules with a single conclusion.</li>
+draws two random acceptance thresholds between 0 and 1; a piece of evidence
+counts only if its combined confidence clears a threshold. Plain evidence
+for and against the same atom faces the same threshold, so the two compete
+for one bar and their overlap is the conflict. A default and the evidence
+for its exception instead get a threshold each, so each side counts only
+where the other missed &mdash; which is how the solver treats them. This
+mode runs no proof search and finishes immediately, but accepts a narrower
+class of inputs: a question without variables and rules with a single
+conclusion.</li>
 </ul>
 <p><b>When the two numbers differ.</b> The solver and the sampling check
 often agree, and agreement supports reading the confidences as chances.
