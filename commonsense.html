@@ -228,6 +228,7 @@ function ensureTax(ok, fail) {
 }
 
 function useGk(el) {
+  mcTeardown();                 // a solve cancels a sampling run in progress
   var input = gid("gkc_1_input").value;
   var flags = buildArgs();
   showResult("solving...");
@@ -249,7 +250,405 @@ function useGk(el) {
 }
 
 function stopSolve(el) {
-  if (gkWorker) { gkWorker.terminate(); gkWorker = null; showResult("stopped."); }
+  var stopped = false;
+  if (gkWorker) { gkWorker.terminate(); gkWorker = null; stopped = true; }
+  if (mcRun || mcWorkers.length) { mcTeardown(); stopped = true; }
+  if (stopped) showResult("stopped.");
+}
+
+// ---- the sampling check --------------------------------------------------
+// Coordinates the mcsampler.js workers. Worker 0 runs gk's own numbers and
+// the clause export; then up to four workers decide sampled worlds in
+// parallel, each reusing one solver instance. The two interval formulas at
+// the end are the ones mcsampler.js uses for the same numbers (both port
+// gkmc.py); they are repeated here because the totals only exist on this
+// side, after the workers' partial results are merged.
+
+var mcWorkers = [];           // the workers of the current sampling run
+var mcRun = null;             // state of that run, null when none is going
+
+var MC_REFUSE_KB = "this example uses a large background knowledge base; " +
+  "sampling is limited to small self-contained inputs. Pick one of the " +
+  "confidence examples or write your own.";
+var MC_THRESHOLD_DRAWS = 100000;
+
+function mcWorkerCount() {
+  var n = (typeof navigator !== "undefined" && navigator.hardwareConcurrency)
+    ? navigator.hardwareConcurrency : 2;
+  return Math.min(4, Math.max(1, n - 1));
+}
+
+function mcTeardown() {
+  for (var i = 0; i < mcWorkers.length; i++) {
+    if (mcWorkers[i]) { try { mcWorkers[i].terminate(); } catch (e) {} }
+  }
+  mcWorkers = [];
+  mcRun = null;
+}
+
+function mcSpawn(idx) {
+  var w = new Worker("mcsampler.js");
+  w.onmessage = function (ev) { mcMessage(idx, ev.data); };
+  w.onerror = function (e) {
+    if (!mcRun) return;
+    mcTeardown();
+    showResult("sampling error: " + ((e && e.message) ? e.message : e));
+  };
+  if (mcWorkers[idx]) { try { mcWorkers[idx].terminate(); } catch (e) {} }
+  mcWorkers[idx] = w;
+  return w;
+}
+
+// Send a job and remember it: a worker may hand back a partly finished job
+// (see the retirement note in mcsampler.js), and the rest is then sent to a
+// replacement worker.
+function mcPost(idx, job) {
+  if (!mcRun) return;
+  mcRun.jobs[idx] = job;
+  mcWorkers[idx].postMessage(job);
+}
+
+// Replace a retired (or dead) worker and give it the rest of its job.
+function mcContinue(idx, job) {
+  mcSpawn(idx);
+  mcPost(idx, job);
+}
+
+function useSampling(el) {
+  if (typeof Worker === "undefined") {
+    showResult("this browser does not support Web Workers, which are needed to run the solver");
+    return;
+  }
+  mcTeardown();
+  if (gkWorker) { gkWorker.terminate(); gkWorker = null; }
+  if (activePreset && (activePreset.background || activePreset.taxonomy)) {
+    showResult("sampling not run: " + mcEsc(MC_REFUSE_KB));
+    return;
+  }
+  var secs = parseInt(gid("seconds").value, 10); if (isNaN(secs)) secs = 5;
+  mcRun = {
+    method: gid("mc_method").value,
+    trials: parseInt(gid("mc_trials").value, 10) || 1000,
+    seconds: secs,
+    phase: "setup",
+    keys: [], values: {}, invalid: 0,
+    ranges: 0, rangesDone: 0, done: {}, doneBefore: {}, jobs: {},
+    counts: {}, validTrials: [],
+    pairs: {}, pairQueue: [], pairKey: null, pairRanges: 0, pairRangesDone: 0,
+    pairCells: null, pairN: 0, pairTotal: 0, notes: []
+  };
+  showResult("sampling: preparing (reference run and grounding)...");
+  mcSpawn(0);
+  mcPost(0, { cmd: "setup", input: gid("gkc_1_input").value,
+              seconds: secs, method: mcRun.method });
+}
+
+function mcMessage(idx, msg) {
+  if (!mcRun || !msg) return;
+  if (msg.progress) { mcProgress(idx, msg); return; }
+  if (!msg.ok) {
+    // a refusal during setup means nothing was sampled; one from a world run
+    // (a world too big for the browser database) ends a run already going
+    var prefix = (mcRun.phase === "setup") ? "sampling not run: "
+                                           : "sampling stopped: ";
+    var text = msg.refusal
+      ? (prefix + msg.refusal)
+      : ("sampling failed: " + (msg.error || "unknown error"));
+    mcTeardown();
+    showResult(mcEsc(text));
+    return;
+  }
+  if (msg.cmd === "setup") mcAfterSetup(msg);
+  else if (msg.cmd === "trials") mcAfterTrials(idx, msg);
+  else if (msg.cmd === "pair") mcAfterPair(idx, msg);
+  else if (msg.cmd === "threshold") mcRenderThreshold(msg);
+}
+
+function mcAfterSetup(s) {
+  mcRun.setup = s;
+  if (s.warnings) for (var w = 0; w < s.warnings.length; w++)
+    mcRun.notes.push(s.warnings[w]);
+  if (mcRun.method === "threshold") {
+    mcWorkers[0].postMessage({ cmd: "threshold", pool: s.thresholdPool,
+      queryAtom: s.queryAtom, querySign: s.querySign,
+      trials: MC_THRESHOLD_DRAWS, seed: 0 });
+    return;
+  }
+  mcRun.phase = "trials";
+  mcRun.keys = new Array(mcRun.trials);
+  var ranges = mcSplit(mcRun.trials);
+  mcRun.ranges = ranges.length;
+  for (var i = 0; i < ranges.length; i++) {
+    if (i !== 0) mcSpawn(i);
+    mcPost(i, { cmd: "trials", pool: s.pool, questions: s.questions,
+                draws: "per-instance", seed: 0,
+                from: ranges[i][0], to: ranges[i][1] });
+  }
+  mcProgressText();
+}
+
+// Split n worlds over the worker pool: [[from, to], ...]
+function mcSplit(n) {
+  var w = mcWorkerCount();
+  var per = Math.ceil(n / w);
+  var ranges = [];
+  for (var from = 0; from < n; from += per)
+    ranges.push([from, Math.min(n, from + per)]);
+  return ranges;
+}
+
+function mcAfterTrials(idx, msg) {
+  var i;
+  for (i = 0; i < msg.keys.length; i++) mcRun.keys[msg.from + i] = msg.keys[i];
+  for (var k in msg.values) if (msg.values.hasOwnProperty(k)) {
+    if (!mcRun.values.hasOwnProperty(k)) mcRun.values[k] = msg.values[k];
+  }
+  mcRun.invalid += msg.invalid;
+  mcRun.doneBefore[idx] = (mcRun.doneBefore[idx] || 0) + (msg.to - msg.from);
+  mcRun.done[idx] = mcRun.doneBefore[idx];
+  if (msg.retire) {
+    // the worker handed back the rest of its range: continue it on a new one
+    var job = mcRun.jobs[idx];
+    job.from = msg.to;
+    mcContinue(idx, job);
+    mcProgressText();
+    return;
+  }
+  mcRun.rangesDone++;
+  if (mcRun.rangesDone < mcRun.ranges) { mcProgressText(); return; }
+
+  for (i = 0; i < mcRun.keys.length; i++) {
+    if (!mcRun.keys[i]) continue;
+    mcRun.validTrials.push(i);
+    for (var j = 0; j < mcRun.keys[i].length; j++) {
+      var key = mcRun.keys[i][j];
+      mcRun.counts[key] = (mcRun.counts[key] || 0) + 1;
+    }
+  }
+  if (mcRun.method !== "subtract"
+      || !mcRun.setup.questions || mcRun.setup.questions.length !== 1) {
+    if (mcRun.method === "subtract")
+      mcRun.notes.push("the input has more than one question; the sampled " +
+                       "column reports provability only.");
+    mcRenderInclusion();
+    return;
+  }
+  mcRun.phase = "pair";
+  mcRun.pairQueue = Object.keys(mcRun.counts).sort(function (a, b) {
+    return mcRun.counts[b] - mcRun.counts[a];
+  });
+  mcStartPair();
+}
+
+// The pairing pass, one answer at a time, its worlds split over the pool.
+function mcStartPair() {
+  if (!mcRun.pairQueue.length) { mcRenderInclusion(); return; }
+  var key = mcRun.pairQueue.shift();
+  mcRun.pairKey = key;
+  mcRun.pairCells = { pos_only: 0, neg_only: 0, both: 0, neither: 0 };
+  mcRun.pairN = 0;
+  mcRun.pairRangesDone = 0;
+  mcRun.done = {};
+  mcRun.doneBefore = {};
+  var valid = mcRun.validTrials;
+  mcRun.pairTotal = valid.length;
+  if (!valid.length) { mcRenderInclusion(); return; }
+  var vals = (key === "yes") ? [] : (mcRun.values[key] || []);
+  var ranges = mcSplit(valid.length);
+  mcRun.pairRanges = ranges.length;
+  for (var i = 0; i < ranges.length; i++) {
+    var trials = valid.slice(ranges[i][0], ranges[i][1]);
+    var posKnown = [];
+    for (var t = 0; t < trials.length; t++)
+      posKnown.push(mcRun.keys[trials[t]].indexOf(key) >= 0);
+    if (!mcWorkers[i]) mcSpawn(i);
+    mcPost(i, { cmd: "pair", pool: mcRun.setup.pool,
+                draws: "per-instance", seed: 0,
+                question: mcRun.setup.questions[0], values: vals,
+                answer: key, trials: trials, posKnown: posKnown });
+  }
+  mcProgressText();
+}
+
+function mcAfterPair(idx, msg) {
+  if (msg.warning) mcRun.notes.push(msg.warning);
+  if (msg.cells) {
+    for (var c in msg.cells) if (msg.cells.hasOwnProperty(c))
+      mcRun.pairCells[c] += msg.cells[c];
+    mcRun.pairN += msg.n;
+  }
+  mcRun.doneBefore[idx] = (mcRun.doneBefore[idx] || 0) + (msg.consumed || 0);
+  mcRun.done[idx] = mcRun.doneBefore[idx];
+  if (msg.retire) {
+    var job = mcRun.jobs[idx];
+    job.trials = job.trials.slice(msg.consumed);
+    job.posKnown = job.posKnown.slice(msg.consumed);
+    mcContinue(idx, job);
+    mcProgressText();
+    return;
+  }
+  mcRun.pairRangesDone++;
+  if (mcRun.pairRangesDone < mcRun.pairRanges) { mcProgressText(); return; }
+  mcRun.pairs[mcRun.pairKey] = { cells: mcRun.pairCells, n: mcRun.pairN };
+  mcStartPair();
+}
+
+// Progress counts what this worker index has finished in total, including
+// what any predecessor at that index finished before it was replaced.
+function mcProgress(idx, msg) {
+  mcRun.done[idx] = (mcRun.doneBefore[idx] || 0) + msg.done;
+  mcProgressText();
+}
+
+function mcProgressText() {
+  var total = 0;
+  for (var k in mcRun.done) if (mcRun.done.hasOwnProperty(k))
+    total += mcRun.done[k];
+  if (mcRun.phase === "trials") {
+    showResult("sampling: " + total + " / " + mcRun.trials +
+               " worlds decided...");
+  } else if (mcRun.phase === "pair") {
+    var who = (mcRun.pairKey === "yes")
+      ? "the negation of the answer"
+      : ("the negation of answer " + mcEsc(mcRun.pairKey));
+    showResult("sampling: checking " + who + ": " + total + " / " +
+               mcRun.pairTotal + " worlds...");
+  }
+}
+
+// ---- result tables -------------------------------------------------------
+
+function mcEsc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                  .replace(/>/g, "&gt;");
+}
+
+function mcNum(x) { return (x < 0 ? "-" : "") + Math.abs(x).toFixed(3); }
+
+// gk's own number for one answer, or an empty cell when gk did not report it
+function mcGkCell(a) {
+  if (!a || a.confidence === null || a.confidence === undefined) return "";
+  var v = String(Math.round(a.confidence * 10000) / 10000);
+  return a.rejected ? (v + " (rejected)") : v;
+}
+
+function mcNotesHtml() {
+  var html = "";
+  for (var i = 0; i < mcRun.notes.length; i++)
+    html += "<p>note: " + mcEsc(mcRun.notes[i]) + "</p>";
+  return html;
+}
+
+function mcRenderInclusion() {
+  var r = mcRun;
+  var ref = r.setup.reference || { answers: {}, order: [] };
+  var subtract = (r.method === "subtract");
+  var n = r.validTrials.length;
+  var order = Object.keys(r.counts).sort(function (a, b) {
+    return r.counts[b] - r.counts[a];
+  });
+  // answers gk reports but no sampled world proved are shown at zero
+  var refOrder = ref.order || [];
+  for (var i = 0; i < refOrder.length; i++)
+    if (order.indexOf(refOrder[i]) < 0) order.push(refOrder[i]);
+
+  var html = "<p>Sampling check: " +
+    (subtract ? "net confidence" : "provability") + ", " + r.trials +
+    " sampled worlds.</p>";
+  html += '<table class="table table-condensed" style="width: auto;">';
+  html += "<tr><th>answer</th>";
+  html += subtract
+    ? "<th>provable</th><th>negation provable</th><th>net (sampled)</th>"
+    : "<th>provable (sampled)</th>";
+  html += "<th>95% interval</th><th>gk reports</th></tr>";
+  for (i = 0; i < order.length; i++) {
+    var key = order[i];
+    var count = r.counts[key] || 0;
+    var pr = r.pairs[key];
+    html += "<tr><td><code>" + mcEsc(key) + "</code></td>";
+    if (subtract && pr && pr.cells && pr.n) {
+      var pp = (pr.cells.pos_only + pr.cells.both) / pr.n;
+      var pn = (pr.cells.neg_only + pr.cells.both) / pr.n;
+      var ci = mcPairedDiffCi(pr.cells.pos_only, pr.cells.neg_only, pr.n);
+      html += "<td>" + mcNum(pp) + "</td><td>" + mcNum(pn) + "</td><td>" +
+              mcNum(ci.diff) + "</td><td>" + mcNum(ci.lo) + " to " +
+              mcNum(ci.hi) + "</td>";
+    } else {
+      var w = mcWilson(count, n);
+      var p = n ? count / n : 0;
+      html += "<td>" + mcNum(p) + "</td>";
+      if (subtract) html += "<td></td><td></td>";
+      html += "<td>" + mcNum(w[0]) + " to " + mcNum(w[1]) + "</td>";
+    }
+    html += "<td>" + mcEsc(mcGkCell(ref.answers[key])) + "</td></tr>";
+  }
+  html += "</table>";
+  html += "<p>Each world keeps an uncertain statement with probability equal " +
+          "to its confidence and drops it otherwise; a plain proof search " +
+          "then decides the world. Valid worlds: " + n + ", timeouts: " +
+          r.invalid + ".</p>";
+  html += mcNotesHtml();
+  mcTeardown();
+  showResult(html);
+}
+
+function mcRenderThreshold(msg) {
+  var r = mcRun;
+  if (msg.notScored) {
+    var note = mcNotesHtml();
+    mcTeardown();
+    showResult("<p>four masses not scored for this input: " +
+               mcEsc(msg.notScored) + ".</p>" + note);
+    return;
+  }
+  var ref = r.setup.reference || { answers: {} };
+  // the threshold query is ground, so gk answers it with true/false
+  var gkAns = ref.answers["yes"];
+  var d = (gkAns && gkAns.detail) ? gkAns.detail : null;
+  var fields = [["support for", "support_for"],
+                ["support against", "support_against"],
+                ["conflict", "conflict"],
+                ["ignorance", "ignorance"]];
+  var html = "<p>Sampling check: four masses, " + msg.trials + " draws.</p>";
+  html += '<table class="table table-condensed" style="width: auto;">';
+  html += "<tr><th></th><th>sampled</th><th>gk reports</th></tr>";
+  for (var i = 0; i < fields.length; i++) {
+    var gkv = (d && typeof d[fields[i][1]] === "number")
+      ? String(Math.round(d[fields[i][1]] * 10000) / 10000) : "";
+    html += "<tr><td>" + fields[i][0] + "</td><td>" +
+            mcNum(msg[fields[i][1]]) + "</td><td>" + gkv + "</td></tr>";
+  }
+  html += "</table>";
+  html += "<p>One random acceptance threshold per ground atom; evidence " +
+          "counts only if its combined confidence clears the threshold, the " +
+          "same threshold for both sides. Compare with the detail report of " +
+          "an ordinary solve.</p>";
+  if (msg.priorityNote) r.notes.push(msg.priorityNote);
+  html += mcNotesHtml();
+  mcTeardown();
+  showResult(html);
+}
+
+// Wilson interval for one sampled proportion (port of gkmc.wilson).
+function mcWilson(k, n) {
+  var z = 1.96;
+  if (!n) return [0.0, 0.0];
+  var p = k / n;
+  var d = 1 + z * z / n;
+  var c = (p + z * z / (2 * n)) / d;
+  var h = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d;
+  return [Math.max(0.0, c - h), Math.min(1.0, c + h)];
+}
+
+// Interval for P(pos)-P(neg) measured on the SAME worlds: the both/neither
+// cells cancel (port of gkmc.paired_diff_ci).
+function mcPairedDiffCi(posOnly, negOnly, n) {
+  var z = 1.96;
+  if (!n) return { diff: 0.0, lo: 0.0, hi: 0.0 };
+  var p1 = posOnly / n, p2 = negOnly / n;
+  var diff = p1 - p2;
+  var se = Math.sqrt(Math.max(0.0, p1 + p2 - diff * diff) / n);
+  return { diff: diff, lo: diff - z * se, hi: diff + z * se };
 }
 
 // ---- Advanced controls and examples -------------------------------------
@@ -264,6 +663,8 @@ function resetAdvanced() {
   gid("maxanswers").value = "";
   gid("confidence").value = "";
   gid("strategy").value = "";
+  gid("mc_method").value = "subtract";
+  gid("mc_trials").value = "1000";
 }
 
 function applyPreset(p) {
@@ -387,6 +788,7 @@ More about this:
 <a href="#outputModal" data-toggle="modal">reading the output</a> &middot;
 <a href="#confModal" data-toggle="modal">confidences</a> &middot;
 <a href="#defaultsModal" data-toggle="modal">defaults</a> &middot;
+<a href="#samplingModal" data-toggle="modal">checking by sampling</a> &middot;
 <a href="#" onclick="gid('syntax').style.display='block'; document.location='#syntax'; return false;">syntax</a>
 </p>
 
@@ -478,6 +880,23 @@ query(animal(X)).
           <div style="display: inline-block; width: 105px; text-align: center;">confidence&nbsp;limit</div>
           <input type="text" class="form-control" id="confidence" value="" style="width: 55px"
                  placeholder="default"></input>
+          <div style="padding-top: 15px;">
+            <div style="display: inline-block; width: 62px; text-align: center;">sampling</div>
+            <select class="form-control" style="width: 160px;" id="mc_method">
+              <option value="subtract">net confidence</option>
+              <option value="provable">provability</option>
+              <option value="threshold">four masses</option>
+            </select>
+            <div style="display: inline-block; width: 50px; text-align: center;">worlds</div>
+            <select class="form-control" style="width: 90px;" id="mc_trials">
+              <option value="300">300</option>
+              <option value="1000" selected>1000</option>
+              <option value="10000">10000</option>
+            </select>
+            <button onclick="useSampling(this); return false;"
+              class="btn btn-small btn-primary" style="width: 80px; margin-left: 10px;">Sample</button>
+            <a href="#samplingModal" data-toggle="modal" style="margin-left: 12px;">what sampling checks</a>
+          </div>
           <p>
           <textarea class="form-control" id="strategy" spellcheck="false"
            style="height: 80px; width:100%; margin-bottom: 20px; margin-top: 15px;"
@@ -719,6 +1138,61 @@ without defeating it outright (the exception example).</li>
 can also be derived from a taxonomy &mdash; a more specific class defeats a
 more general one &mdash; using <code>tax(class)</code> in place of a number;
 this needs auxiliary data files and is not enabled on this page.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="samplingModal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content modal_login">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal">
+            <span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+            <h4 class="modal-title" style="color: black;">Checking results by sampling</h4>
+      </div>
+      <div class="modal-body">
+<p>gk computes its confidences by rules applied to proofs (see <i>how
+confidences combine</i>). Sampling checks such numbers against a concrete
+reading: treat each confidence as the probability that the statement holds,
+generate many random worlds accordingly, and count what happens. The controls
+are in the <i>Advanced</i> panel.</p>
+<ul>
+<li><b>Provability</b> and <b>net confidence</b> build each world by keeping
+every uncertain statement with probability equal to its confidence and
+dropping it otherwise; certain statements are always kept. A plain proof
+search with no confidence arithmetic then decides the world.
+<i>Provability</i> is the fraction of worlds in which the answer is
+provable. <i>Net confidence</i> subtracts the fraction in which the
+answer's explicit negation is provable, measured in the same worlds &mdash;
+mirroring how gk weighs evidence against an answer. One proof search runs
+per world in your browser, so thousands of worlds take up to a few
+minutes; the 95% interval in the result shows the sampling precision.</li>
+<li><b>Four masses</b> estimates the split shown by the detail report:
+support for, support against, conflict and ignorance. Each ground atom
+draws one random acceptance threshold between 0 and 1; a piece of evidence
+counts only if its combined confidence clears the threshold, and the same
+threshold applies to the evidence for and against the atom. This mode runs
+no proof search and finishes immediately, but accepts a narrower class of
+inputs: a question without variables and rules with a single conclusion.</li>
+</ul>
+<p>The sampled number and gk's number often agree, and agreement supports
+the probability reading of that example. They can also differ for
+understood reasons: gk may net the evidence on a contested premise before
+using it, while sampling counts the worlds in which the premise is provable
+(the <i>contested premises</i> example shows this); a recursive rule can
+succeed through many different sampled paths while gk reports the evidence
+of a selected proof; and defaults with priorities are sampled only in the
+documented cases. A difference is a property of the example worth
+understanding, not a malfunction.</p>
+<p>Sampling needs a small, finite input: constants only, no function terms,
+no arithmetic or equality, no background knowledge base. Of the examples on
+this page, 1&ndash;11 and 15&ndash;19 qualify; the rest use function terms,
+arithmetic, equality or a large knowledge base, and say so instead of
+estimating. The method and its limits are described in the
+<a href="https://github.com/tammet/gkreasoner/tree/master/montecarlo">montecarlo
+directory</a> of the gkreasoner repository; the estimates are repeatable
+&mdash; the same input and world count give the same sampled worlds.</p>
       </div>
     </div>
   </div>
