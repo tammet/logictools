@@ -58,8 +58,6 @@ var varactivities; // array of variable activities for preference, assigned late
   table search with the resolution-like unit propagation.
 
   This algorithm uses:
-  - simple preprocessing before search starts: limited unit propagation/subsumption,
-    tautology deletion and pure literal deletion
   - unit propagation during search
   - weighted selection of the next variable to split
   - learning variable weights: the last contradiction clause adds weights
@@ -69,8 +67,19 @@ var varactivities; // array of variable activities for preference, assigned late
     occurrences.
   - two watched literals per clause
 
-  Clause learning and non-chronological backtracking are not implemented
-  (see https://en.wikipedia.org/wiki/Conflict-Driven_Clause_Learning )
+  Notice that the clause list is not simplified before the search starts.
+  An earlier version of this solver did a single pass of unit
+  propagation/subsumption, tautology and duplicate literal deletion there, but
+  this was unsound: a unit clause derived late during the pass was not
+  propagated back into the clauses already passed over, hence the values found
+  could contradict them, and the search then trusted these values. The cdcl
+  solver in proplog_cdcl.js does simplify the clause list, but it propagates the
+  units found through the whole clause set before making the first decision,
+  which is exactly what makes the simplification safe there.
+
+  Clause learning and non-chronological backtracking are not implemented:
+  see the proplog_cdcl.js solver and
+  https://en.wikipedia.org/wiki/Conflict-driven_clause_learning
 
   See http://minisat.se/downloads/MiniSat.pdf for a good introduction
   to optimizing propositional solvers.
@@ -134,19 +143,15 @@ exports.dpll = function (clauses,maxvarnr,trace,varnames) {
   varactivities=new Array(maxvarnr+1);
   for(i=0;i<=maxvarnr;i++) varactivities[i]=1;
     
-  // optional simplification: may be omitted
-  
-  clauses=simplify_clause_list(clauses,varvals,occvars,posbuckets,negbuckets,derived);
-  if (clauses===false) {  // contradiction found
-    if (trace_flag) trace_list.push("contradiction found during simplification");
-    return [false,trace_list.join("\r\n")];
-  } else if (clauses.length===0) { // no clauses remaining: a model found
-    store_model(varvals);
-    if (trace_flag) trace_list.push("assignment found during simplification");  
-    result_model=clean_result(result_model,purevars);  
-    return [result_model,trace_list.join("\r\n")];
+  // an empty clause in the input makes the whole clause set false:
+  // empty clauses are never stored to the buckets, hence they are checked here
+  for(i=0;i<clauses.length;i++) {
+    if (clauses[i].length===2) { // only the two meta-elements, no literals at all
+      if (trace_flag) trace_list.push("an empty clause found in the input");
+      return [false,trace_list.join("\r\n")];
+    }
   }
-  
+
   // remove pure variables and build initial activities for vars
   clauses=count_occurrences(clauses,varvals,occvars,posbuckets,negbuckets,derived);
   if (clauses.length===0) { // no clauses remaining: a model found
@@ -156,15 +161,8 @@ exports.dpll = function (clauses,maxvarnr,trace,varnames) {
     return [result_model,trace_list.join("\r\n")];
   }
   // assign clauses to buckets according to literal occurrences
-  makebuckets(clauses,varvals,occvars,posbuckets,negbuckets,derived);   
-  
-  /*
-  txt="preprocessing finished: " 
-  txt+=", pure derived count is "+pure_derived_count;  
-  txt+=", clauses removed count is "+clauses_removed_count+".";
-  trace_list.push(txt);  
-  */
-  
+  makebuckets(clauses,varvals,occvars,posbuckets,negbuckets,derived);
+
   // full search
   res=satisfiable_at(0,0,clauses,varvals,occvars,posbuckets,negbuckets,derived);
   
@@ -465,85 +463,15 @@ function maxvar_and_meta(clauses) {
 }
 
 
-/* Optional clause list simplification:
-   - unit resolution and subsumption
-   - tautology elimination
-   - duplicate literals elimination
-*/ 
-
-function simplify_clause_list(clauses,varvals,occvars,posbuckets,negbuckets,derived) { 
-  var clauses2,i,j,k,clause,lit,nlit,nr,sign,remove,cuts,dups,nlen,nc,unsat,s;  
-  clauses=clauses.sort(function(a,b){return a.length-b.length});  
-  // loop over clauses to remove tautologies and duplicate literals
-  // and to perform unit subsumption and cutoff
-  unsat=false;
-  clauses2=[];
-  for(i=0;i<clauses.length;i++) {
-    //console.log("clause i "+i+" "+clause_to_str(clauses[i]));
-    clause=clauses[i];
-    remove=false;
-    cuts=0;
-    dups=0;
-    for(j=2;j<clause.length;j++) {
-      lit=clause[j];
-      nlit=0-lit;
-      if (lit<0) {nr=0-lit; sign=-1; }
-      else {nr=lit; sign=1; }
-      if (varvals[nr]===sign) { remove=true; break; } // subsumed
-      if (varvals[nr]===0-sign) { clause[j]=0; cuts++; continue; } // cut off            
-      for(k=2;k<j;k++) { // check for tautology and duplicate literals
-        if(clause[k]===nlit) { remove=true; break; }
-        if(clause[k]===lit) { clause[j]=0; dups++; }
-      }  
-      if (remove) break; // do not keep tautologies
-    }
-    //console.log("cuts "+cuts+" dups "+dups+" remove "+remove);
-    if (remove) {
-      clauses_removed_count++;
-      continue;    
-    }  
-    nlen=clause.length-(cuts+dups);
-    if (nlen===2) {
-      unsat=true;
-      return false;
-    }  
-    if (nlen===3) {
-      // unit
-      units_derived_count++;
-      for(k=2;k<clause.length;k++) {
-        if (clause[k]!==0) {lit=clause[k]; break; }
-      }
-      //console.log("derived unit "+lit);
-      if (lit<0) {nr=0-lit; sign=-1; }
-      else {nr=lit; sign=1; }
-      varvals[nr]=sign;
-      continue;
-    }
-    if (nlen!==clause.length) {
-      // some literals were removed
-      nc=new Int32Array(nlen);
-      nc[0]=clause[0];
-      nc[1]=clause[1];
-      k=2;
-      for(j=2;j<clause.length;j++) {
-        if (clause[j]===0) continue;
-        nc[k]=clause[j];
-        k++;
-      }
-      clause=nc;
-    }
-    clauses2.push(clause);
-  }   
-  if (trace_flag) {
-    s="units detected or derived during preprocessing: ";
-    for(i=1;i<varvals.length;i++) {
-      if (varvals[i]!==0) s+=" "+i; //showvar(i*varvals[i])+" ";
-    }  
-    print_trace(0,s);
-    //console.log(s);
-  } 
-  return clauses2;
-}
+/* The clause list simplification which used to sit here has been removed:
+   it did a single pass of unit resolution/subsumption, tautology and duplicate
+   literal elimination, but a unit clause derived during the pass was not
+   propagated back into the clauses already passed over. The values it found
+   could hence contradict the clause set, and since the search below simply
+   trusts the values already assigned, whole clauses could be silently ignored.
+   See proplog_cdcl.js for the same simplification done safely: there the units
+   found are propagated through the clause set before the search starts.
+*/
 
 /* count literal occurrences to build two things:
    - a global list purevars of pure vars (vars occurring only positively or negatively)

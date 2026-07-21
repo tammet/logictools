@@ -1,3 +1,6 @@
+// Historical: proplog_min.js was originally built with the (now retired)
+// Google Closure Compiler online service using this recipe:
+//
 // ==ClosureCompiler==
 // @output_file_name proplogic_min.js
 // @compilation_level ADVANCED_OPTIMIZATIONS
@@ -5,6 +8,7 @@
 // @code_url http://logictools.org/proplog_parse.js
 // @code_url http://logictools.org/proplog_convert.js
 // @code_url http://logictools.org/proplog_generate.js
+// @code_url http://logictools.org/proplog_cdcl.js
 // @code_url http://logictools.org/proplog_dpll.js
 // @code_url http://logictools.org/proplog_olddpll.js
 // @code_url http://logictools.org/proplog_naivedpll.js
@@ -12,3 +16,19 @@
 // @code_url http://logictools.org/proplog_naiveres.js
 // @code_url http://logictools.org/proplog_res.js
 // ==/ClosureCompiler==
+//
+// Current build: the files are concatenated in the order above and only their
+// comments and whitespace are stripped, using the rjsmin python module:
+//
+//   pip install rjsmin
+//   python3 -c '
+//   import rjsmin
+//   files="proplog_ui proplog_parse proplog_convert proplog_generate proplog_cdcl \
+//   proplog_dpll proplog_olddpll proplog_naivedpll proplog_searchtable \
+//   proplog_naiveres proplog_res".split()
+//   out="\n".join(rjsmin.jsmin(open(f+".js",encoding="latin-1").read()) for f in files)
+//   open("proplog_min.js","w",encoding="latin-1").write(out+"\n")'
+//
+// Any other minifier will do as well, but do NOT let it rename the top level
+// names (no --toplevel, no --mangle-props with terser): the modules find each
+// other through the this.proplog_* globals, which such options would rename.

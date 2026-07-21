@@ -11,6 +11,7 @@ function gid(x) { return document.getElementById(x); }
 <script src="proplog_parse.js"></script>
 <script src="proplog_convert.js"></script>
 <script src="proplog_generate.js"></script>
+<script src="proplog_cdcl.js"></script>
 <script src="proplog_dpll.js"></script>
 <script src="proplog_olddpll.js"></script>
 <script src="proplog_naivedpll.js"></script>
@@ -40,6 +41,7 @@ function gid(x) { return document.getElementById(x); }
        style="height: 36px; color: red;">Solve</button>
     using   
     <select style="height: 36px;" id="algorithm_select">
+      <option value="cdcl">cdcl: clause learning</option>
       <option value="dpll_better">dpll: better</option>
       <option value="dpll_old">dpll: old</option>
       <option value="dpll_naive">dpll: naive</option>

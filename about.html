@@ -7,7 +7,7 @@
 
 <meta name="description" content="Simple propositional logic solvers: easy to hack and experiment with.">
 <meta name="author" content="Tanel Tammet">
-<meta name="keywords" content="logic, solvers, propositions, dpll, resolution, truth table"> 
+<meta name="keywords" content="logic, solvers, propositions, cdcl, clause learning, dpll, resolution, truth table"> 
 
 <meta itemprop="itemtype" content="http://schema.org/SoftwareApplication">
 <meta itemprop="name" content="Logictools">
@@ -802,8 +802,9 @@ means looking for such values of variables that the formula becomes true. For ex
 <tt>(a -&gt; b) &amp; a</tt> becomes true if and only if both <tt>a</tt> and <tt>b</tt> are assigned true. 
 <p></p>
 You can select and try out several solver algorithms: 
-the "<a href='http://en.wikipedia.org/wiki/DPLL_algorithm'>DPLL</a> better" 
-is the best solver amongst the options offered on our page. 
+"<a href='https://en.wikipedia.org/wiki/Conflict-driven_clause_learning'>cdcl</a>: clause learning" 
+implements the algorithm essentially all the modern high-performance solvers are built upon and is, 
+together with "dpll: better", the strongest option offered on our page. 
 Read the "Methods for solving formulas" section below about the differences between algorithms.
 <p></p>
 One single suitable set of values
@@ -884,11 +885,12 @@ unit clauses, which is essentially a limited version of resolution.
 The DPLL method should be also seen as a general framework: actual solvers implement wildly different
 strategies and optimisations. An excellent source for reading about various methods used by the state of the
 art solvers is the <a href="http://minisat.se/Papers.html">collection of papers</a> by the authors of 
-<a href="http://minisat.se">Minisat</a>, a popular high-end solver. An important extension to DPLL is
-<a href="https://en.wikipedia.org/wiki/Conflict-Driven_Clause_Learning">Conflict-Driven Clause Learning</a>,
-currently not implemented by the solvers presented on our page.
+<a href="http://minisat.se">Minisat</a>, a popular high-end solver. The most important extension to DPLL is
+<a href="https://en.wikipedia.org/wiki/Conflict-driven_clause_learning">Conflict-Driven Clause Learning</a> (CDCL),
+the algorithm essentially all the modern high-performance solvers are built upon. It is implemented on our
+page as the "cdcl: clause learning" solver described below.
 <p></p>
-We provide three versions of DPLL solvers for experimenting, from worst (and easiest to understand) to 
+We provide four versions of DPLL-family solvers for experimenting, from worst (and easiest to understand) to 
 better and more complicated:
 <ul>
 <li><a href="proplog_naivedpll.js">dpll: naive</a>
@@ -902,16 +904,38 @@ calculated before the start of the search, organizes clauses into buckets associ
 top of the "dpll: old" version (see, for example, 
 <a href="http://minisat.se/Papers.html">minisat papers</a> for explanations):
 <ul>
-  <li>simple preprocessing before search starts: limited unit propagation/subsumption,
-    tautology deletion and pure literal deletion</li>
   <li>does not use pure literal rule during search (too time-consuming)</li>    
   <li>learning variable weights: the last contradiction clause adds weights to the variables it contains</li>
   <li>only two literals per clause are watched</li>
 </ul> 
-However, the important 
-<a href="https://en.wikipedia.org/wiki/Conflict-Driven_Clause_Learning">Conflict-Driven Clause Learning</a>
-strategy is not implemented.
 </li>  
+<li><a href="proplog_cdcl.js">cdcl: clause learning</a> extends "dpll: better" to a
+<a href="https://en.wikipedia.org/wiki/Conflict-driven_clause_learning">Conflict-Driven Clause Learning</a> (CDCL)
+solver: the algorithm behind essentially all the modern high-performance solvers like
+<a href="https://github.com/arminbiere/kissat">kissat</a>. On top of the machinery of "dpll: better" it adds:
+<ul>
+  <li>an explicit trail of assignments, storing for each variable assigned by unit propagation the
+   clause which forced its value: this turns the recursive search of the dpll solvers into a plain loop</li>
+  <li>conflict analysis: whenever a clause becomes false, these stored clauses are resolved backwards
+   into a new <i>learned clause</i> pinpointing a cause of the conflict (the 
+   <i>first unique implication point</i> method). The learned clause is added to the clause set and
+   guarantees that the very same conflict is never met again</li>
+  <li>non-chronological backtracking (backjumping): the learned clause tells how many decision levels
+   can be jumped back over at once</li>
+  <li>minimizing the learned clauses, and regularly throwing away the ones which look useless: without
+   the latter the clause set would keep growing until propagation slows down to a crawl</li>
+  <li>variable activities in the style of VSIDS: variables taking part in the recent conflicts are
+   preferred when the next variable to assign is chosen</li>
+  <li>phase saving: a variable is first tried with the value it was last assigned</li>
+  <li>restarts following the Luby sequence: the search is regularly started over from the beginning,
+   keeping the learned clauses, the activities and the saved phases</li>
+</ul> 
+Do not expect a miracle on the problems of our random 3-sat generator, though: uniform random problems 
+carry no structure for the learned clauses to catch, and there "cdcl: clause learning" and "dpll: better" 
+are roughly on par, both having a long tail of unlucky problems. Clause learning wins on problems with
+structure - which is what the problems coming from real applications look like - and this is why the
+modern solvers are built on it.
+</li>
 <p></p>
 
 
@@ -941,6 +965,15 @@ an easily extensible and hackable state of the art solver which is a basis for s
 other state of the art solvers. You can even run
 <a href="http://www.msoos.org/2013/09/minisat-in-your-browser/">minisat in your browser</a>,
 compiled from C to javascript using LLVM.
+<p></p>
+The best known modern conflict-driven clause learning solvers are 
+<a href="https://github.com/arminbiere/kissat">kissat</a> and 
+<a href="https://github.com/arminbiere/cadical">cadical</a> by Armin Biere along with their many
+derivatives, dominating the recent SAT competitions: their source repositories are a good place to
+see how a carefully engineered CDCL solver is built. Our own 
+<a href="proplog_cdcl.js">"cdcl: clause learning"</a> solver is a small educational implementation
+of the same core algorithm: it needs a comparable number of steps, but each step is several times
+slower than in a carefully optimized C solver.
 
 
     </div>

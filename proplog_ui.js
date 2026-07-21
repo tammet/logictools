@@ -15,6 +15,7 @@
     proplog_parse.js
     proplog_convert.js
     proplog_generate.js
+    proplog_cdcl.js
     proplog_dpll.js
     proplog_naivedpll.js
     proplog_res.js
@@ -55,7 +56,7 @@ var start_time=0;
   
   Takes:
     txt - the propositional problem in DIMACS or formula syntax
-    solver_algorithm - one of "dpll_better","dpll_naive",
+    solver_algorithm - one of "cdcl","dpll_better","dpll_old","dpll_naive",
       "truth_table_naive","truth_table_better","resolution_naive","resolution_better"
     trace_method - one of "none", "html", "text", "console"
   
@@ -99,9 +100,11 @@ function solve_aux(txt,solver_algorithm,trace_method) {
   // return first el and change clauses by removing the first el: 
   show_process("got "+clauses.length+" clauses, max var "+maxvar);
   
-  if (solver_algorithm=="dpll_better") 
+  if (solver_algorithm=="cdcl") 
+    res=proplog_cdcl.cdcl(clauses,maxvar,trace_method,origvars);
+  else if (solver_algorithm=="dpll_better") 
     res=proplog_dpll.dpll(clauses,maxvar,trace_method,origvars);
-  if (solver_algorithm=="dpll_old") 
+  else if (solver_algorithm=="dpll_old") 
     res=proplog_olddpll.olddpll(clauses,maxvar,trace_method,origvars);
   else if (solver_algorithm=="dpll_naive")    
     res=proplog_naivedpll.naivedpll(clauses,maxvar,trace_method,origvars);
@@ -109,7 +112,7 @@ function solve_aux(txt,solver_algorithm,trace_method) {
     res=proplog_searchtable.searchtable(clauses,maxvar,"leaves",trace_method,origvars); 
   else if (solver_algorithm=="truth_table_better") 
     res=proplog_searchtable.searchtable(clauses,maxvar,"nodes",trace_method,origvars); 
-  if (solver_algorithm=="resolution_naive") 
+  else if (solver_algorithm=="resolution_naive") 
     res=proplog_naiveres.naiveres(clauses,maxvar,trace_method,origvars); 
   else if (solver_algorithm=="resolution_better")
     res=proplog_res.resolution(clauses,maxvar,trace_method,origvars); 
