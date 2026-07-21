@@ -339,17 +339,23 @@ function groundPool(items) {
       for (j = 0; j < run.items.length; j++) goals.push(run.items[j]["@logic"]);
       continue;
     }
-    var conf = numConf(run.items[0]["@confidence"]);
-    if (run.items.length > 1 && conf < 1.0) {
-      // gk splits a statement's confidence over the clauses it produces, so
-      // the drawn values differ from the number in the input; say so.
-      var joint = 1.0;
-      for (j = 0; j < run.items.length; j++)
-        joint *= numConf(run.items[j]["@confidence"]);
+    // gk splits a statement's confidence over the clauses it produces (the
+    // split need not be even), so the drawn values differ from the number in
+    // the input; say so when it happens.
+    var uncertainSplit = false;
+    for (j = 0; j < run.items.length; j++)
+      if (numConf(run.items[j]["@confidence"]) < 1.0) uncertainSplit = true;
+    if (run.items.length > 1 && uncertainSplit) {
+      var parts = [], joint = 1.0;
+      for (j = 0; j < run.items.length; j++) {
+        var cj = numConf(run.items[j]["@confidence"]);
+        parts.push(fmtConf(cj));
+        joint *= cj;
+      }
       warnings.push("statement " + run.name + " splits into " +
-                    run.items.length + " clauses, each drawn separately at " +
-                    "confidence " + fmtConf(conf) + "; together they carry " +
-                    "the stated " + fmtConf(joint) + ".");
+                    run.items.length + " clauses, drawn separately at " +
+                    "confidences " + parts.join(", ") + "; together they " +
+                    "carry the stated " + fmtConf(joint) + ".");
     }
     var seen = {};
     for (j = 0; j < run.items.length; j++) {
@@ -485,62 +491,23 @@ function worldDoc(active, questions) {
 // negative-evidence subtraction must not run, or a contradictory world would
 // report "evidence below limit" instead of "provable". -plain tells gk the
 // world has no confidences.
-//
-// -mbsize 20 asks for a 20 MB database instead of the 100 MB default. A
-// sampled world holds at most a few dozen ground clauses, so the smaller
-// database is ample, and it matters because of the retention described at
-// LEAK_LIMIT below: the smaller the database, the more worlds one solver
-// instance can decide before it has to be replaced.
-var WORLD_ARGS = ["input", "-nonegative", "-plain", "-seconds", "2",
-                  "-mbsize", "20"];
-
-// gk 1.0.2 returns early -- before its WebAssembly cleanup -- when an open
-// question ends with no answers at all (Main/gk.c, the
-// `!okanswers && parse_question_type==2` branch), so that one exit path
-// leaks the whole database. Every other path frees it, and thousands of
-// consecutive runs are otherwise fine.
-//
-// What is lost is proportional to the database of that call: the module dies
-// on the 6th such call at the 100 MB default, the 29th at -mbsize 20, the
-// 58th at -mbsize 10 (measured), i.e. about 1.7 times the database size each
-// time, against a 1000 MB heap. The worker keeps that running total and
-// retires itself at LEAK_BUDGET_MB, well short of the heap; the page then
-// replaces it and the range continues where it stopped. Module.onAbort is
-// the backstop if some other input exhausts memory faster.
-var LEAK_BUDGET_MB = 600;
-var LEAK_FACTOR = 1.7;
-var DEFAULT_DB_MB = 100;        // gk's WebAssembly default
-var leakedMb = 0;
-
-// The database size of the call that just ran, from its own -mbsize.
-function dbSizeOf(args) {
-  for (var i = 0; i < args.length - 1; i++)
-    if (args[i] === "-mbsize") {
-      var mb = parseInt(args[i + 1], 10);
-      if (!isNaN(mb)) return mb;
-    }
-  return DEFAULT_DB_MB;
-}
+var WORLD_ARGS = ["input", "-nonegative", "-plain", "-seconds", "2"];
 
 // The answer keys proved in one world, or null when the world could not be
 // decided (time limit, error). Port of parse_world_answers + norm_key onto
 // the JSON output that JSON input produces. `vals`, when given, collects the
 // raw bindings behind each answer key for the later pairing pass.
-function parseWorldAnswers(out, vals, dbMb) {
+function parseWorldAnswers(out, vals) {
   var o;
-  try { o = JSON.parse(out); } catch (e) { noteLeak(dbMb); return null; }
-  if (!o || typeof o !== "object") { noteLeak(dbMb); return null; }
+  try { o = JSON.parse(out); } catch (e) { return null; }
+  if (!o || typeof o !== "object") return null;
   if (o.error) {
     // a database too small for this world is not a sampling result: stop
     // rather than report the world as a timeout
     if (String(o.error).indexOf("memory") >= 0) throw refusal(REFUSE.dbfull);
-    noteLeak(dbMb);
     return null;
   }
   var res = o.result || "";
-  // the exit path that leaks the database (see LEAK_BUDGET_MB); an output
-  // we could not read at all is charged too, since its path is unknown
-  if (res.indexOf("no answers found") >= 0) noteLeak(dbMb);
   if (res.indexOf("time limit") >= 0) return null;
   var keys = [];
   var answers = o.answers || [];
@@ -575,14 +542,12 @@ function ansArgs(a) {
   return null;
 }
 
-function noteLeak(dbMb) { leakedMb += LEAK_FACTOR * dbMb; }
-
 // Decide one world against the given questions.
 function decideWorld(pool, seed, trial, draws, questions, vals) {
   var active = sampleWorld(pool, seed, trial, draws);
   var doc = worldDoc(active, questions);
   var out = gkRun([{ name: "input", data: doc }], WORLD_ARGS);
-  return parseWorldAnswers(out, vals, dbSizeOf(WORLD_ARGS));
+  return parseWorldAnswers(out, vals);
 }
 
 // ---- statistics (ports of gkmc.wilson / gkmc.paired_diff_ci) -------------
@@ -1256,13 +1221,18 @@ function parseReference(out) {
     var answers = groups[g].list;
     for (var i = 0; i < answers.length; i++) {
       var a = answers[i];
-      var k = answerKey(a.answer, null);
+      // for a world run a false answer proves nothing, but here it is gk's
+      // report that the NEGATION holds: keep it under the question's own key
+      // and mark it, so the comparison column is not left empty
+      var negated = (a.answer === false);
+      var k = negated ? "yes" : answerKey(a.answer, null);
       if (k === null) continue;
       if (!Object.prototype.hasOwnProperty.call(res.answers, k)) {
         res.answers[k] = {
           confidence: (typeof a.confidence === "number") ? a.confidence : null,
           detail: a.detail || null,
-          rejected: groups[g].rejected
+          rejected: groups[g].rejected,
+          negated: negated
         };
         res.order.push(k);
       }
@@ -1278,11 +1248,9 @@ function doSetup(job) {
   var input = job.input;
   var secs = job.seconds ? String(job.seconds) : "5";
   // the reference run is an ordinary solve, exactly as the Solve button runs
-  // it (default database included), so its numbers are the ones the page
-  // shows elsewhere; if it takes the leaking exit path it is charged too
+  // it, so its numbers are the ones the page shows elsewhere
   var refArgs = ["input", "-detail", "-outformat", "json", "-seconds", secs];
   var refOut = gkRun([{ name: "input", data: input }], refArgs);
-  if (refOut.indexOf("no answers found") >= 0) noteLeak(dbSizeOf(refArgs));
   var reference = parseReference(refOut);
   var expOut = gkRun([{ name: "input", data: input }],
                      ["input", "-defworlds", "-clausify", "-outformat", "json"]);
@@ -1340,9 +1308,13 @@ function doTrials(job) {
            retire: (t < job.to) };
 }
 
-// This solver instance has lost as much memory as it safely can (or has
-// already died), so the rest of the range needs a fresh one.
-function retiring() { return moduleDead || leakedMb >= LEAK_BUDGET_MB; }
+// The solver instance has died (Module.onAbort), so the rest of the range
+// needs a fresh worker. With gk 1.0.3 this is a pure backstop: the database
+// leak on the "no answers found" exit path that used to exhaust the heap
+// after a few dozen such worlds is fixed in gk itself, and one instance
+// decides thousands of worlds without loss. The retire protocol stays so a
+// future regression degrades to slower sampling instead of a dead run.
+function retiring() { return moduleDead; }
 
 // cmd "pair": the per-answer pairing pass. The same worlds are re-generated
 // from (seed, trial) and decided against the answer's CLOSED positive and
