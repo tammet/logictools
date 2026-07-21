@@ -87,7 +87,7 @@ var varactivities; // array of variable activities for preference, assigned late
   Take 
     clauses: a clause set (array of integer arrays) like [[1,-2],[-2,1]] 
     maxvarnr: (optional) the maximal variable in clauses (integer) like 2.
-    trace: (optional) either false,"html","txt" or "console" 
+    trace: (optional) either false,"html","text" or "console"
       for trace generation and output
     varnames: (optional) an array of variable names used in trace and resulting  
       model instead of integers, like [0,"x","y","z1","z2"]

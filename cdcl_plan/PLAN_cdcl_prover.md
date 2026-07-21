@@ -23,7 +23,8 @@
 >    the learned clause set grew without bound and the solver lost to plain dpll
 >    on everything above 200 variables, which would have made the whole page
 >    misleading. See `reduce_learned` and `minimize_learned`.
-> 3. **The constants were tuned on fixed benchmark sets** (see §5 of this record):
+> 3. **The constants were tuned on fixed benchmark sets** of random 3-sat
+>    instances at 150-300 variables:
 >    `RESTART_BASE=128`, `LEARNED_GROWTH=1.1`. Learned clauses are ranked by
 >    length; LBD was implemented and measured as well, and was not consistently
 >    better, so the simpler criterion was kept and LBD is mentioned in the code

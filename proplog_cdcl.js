@@ -184,7 +184,7 @@ var reduce_pending;// true if the learned clauses should be thrown away at the n
   Take
     clauses: a clause set (array of integer arrays) like [[1,-2],[-2,1]]
     maxvarnr: (optional) the maximal variable in clauses (integer) like 2.
-    trace: (optional) either false,"html","txt" or "console"
+    trace: (optional) either false,"html","text" or "console"
       for trace generation and output
     varnames: (optional) an array of variable names used in trace and resulting
       model instead of integers, like [0,"x","y","z1","z2"]
@@ -313,6 +313,9 @@ exports.cdcl = function (clauses,maxvarnr,trace,varnames) {
         // ---- too many learned clauses: go back to the start and throw half away ----
         // The actual throwing away is done in the other branch below, where
         // everything derivable at decision level 0 has just been derived.
+        // Note that this backjump may undo the assignment made by
+        // install_learned above: no harm done, the clause itself is kept and
+        // will simply force the same assignment again when the search returns.
         reduce_pending=true;
         backjump(0);
       } else if (conflicts_count-conflicts_at_last_restart>=conflicts_until_restart) {
@@ -679,8 +682,9 @@ function backjump(level) {
   any later backjump, which is exactly what the watching scheme requires.
 
   All the literals of the clause except the asserting one are false right now,
-  hence the clause forces the asserting literal to be true. Learned clauses are
-  never deleted here: real solvers periodically throw the useless ones away.
+  hence the clause forces the asserting literal to be true. The clause is also
+  remembered in the learnedclauses list, so that reduce_learned below can
+  periodically throw the less useful learned clauses away.
 */
 
 function install_learned(lits) {
@@ -1045,8 +1049,10 @@ function store_model(varvals) {
 
 /*
   The statistics line printed at the end of the search, with or without a trace.
-  Comparing these numbers with the numbers printed by the dpll solvers shows
-  what clause learning actually buys: far fewer assignments for the same problem.
+  Comparing the conflicts counted here with the unit propagation counts printed
+  by the dpll solvers on the same problem shows how the two searches differ:
+  on structured problems clause learning needs far fewer steps, while on the
+  uniformly random problems of our generator the two are roughly on par.
 */
 
 function statistics_str(prefix) {
