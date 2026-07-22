@@ -37,8 +37,8 @@ var SEED = 0;
 // incl: the answers to check, with the Python pos-neg estimate where one
 //   exists (mc_check_ref.json overrides these); null means "run it, no
 //   number to match".
-// thr: the Python four masses [for, against, conflict, ignorance].
-// refuse / thrRefuse: the exact refusal the input must produce instead.
+// thr: the Python four components [positive, negative, conflict, ignorance].
+// refuse / thrRefuse: internal fields for the exact unsupported-case message.
 // gk: gk's own confidence per answer, checked against the reference run.
 
 var EXAMPLES = {
@@ -55,13 +55,13 @@ var EXAMPLES = {
   "8":  { incl: { "tweety": 1.0, "robin": 1.0 } },
   "9":  { incl: { "robin": 1.0, "tweety": null } },
   // ex10: gk reports the penguin as a rejected answer; no world proves it,
-  // since the blocked default cannot fire. ex11 is the Nixon standoff: gk
-  // commits to neither side and no world proves the answer either.
+  // since the blocked default cannot fire. In ex11 the Nixon defaults block
+  // each other: gk commits to neither polarity and no world proves the answer.
   "10": { incl: { "tweety": 1.0 }, gk: { "tweety": 1.0, "pingu": 1.0 } },
   "11": { incl: {}, gk: { "nixon": 0.0 } },
   // ex12 (where is John) is eligible, but its grounding is ~20000 clauses
   // and each sampled world takes about a second: only its setup verdict and
-  // the four-mass refusal (open query) are checked here
+  // the shared-threshold unsupported case (open query) are checked here
   "12": { skipIncl: true, thrRefuse: "thrOpen" },
   "13": { refuse: "builtin" },
   "14": { refuse: "builtin" },
@@ -75,7 +75,7 @@ var EXAMPLES = {
   "19": { incl: { "yes": 1.0 }, thr: [1.0, 0, 0, 0] },
   "20": { refuse: "functions" },
   // the page refuses ex23 before the worker sees it (its preset loads the
-  // taxonomy); here only its four-mass verdict is checked. Its query has a
+  // taxonomy); here only its shared-threshold verdict is checked. Its query has a
   // variable, which is found before its named blocker priorities.
   "23": { skipIncl: true, thrRefuse: "thrOpen" }
 };
@@ -182,9 +182,9 @@ function runExample(id) {
   var input = readInput(id);
   var out = { id: id, restarts: 0 };
 
-  // setup: ask for the four-mass pool first, and fall back to an inclusion
+  // setup: ask for the shared-threshold pool first, and fall back to a clause-activation
   // setup when the input is outside that narrower fragment (as the page does
-  // when the method menu is not on "four masses")
+  // when the method menu is not on "shared threshold")
   var setup = ask({ cmd: "setup", input: input, seconds: 5, method: "threshold" });
   var thrSetup = setup;
   if (!setup.ok && setup.refusal)
@@ -305,13 +305,13 @@ for (var ii = 0; ii < ids.length; ii++) {
 
   if (spec.refuse) {
     var want = sampler.REFUSE[spec.refuse];
-    if (out.refusal === want) ok(id, "refused: " + want.slice(0, 46) + "...");
-    else bad(id, "expected refusal '" + spec.refuse + "' (" + want + "), got " +
+    if (out.refusal === want) ok(id, "unsupported as expected: " + want.slice(0, 46) + "...");
+    else bad(id, "expected unsupported case '" + spec.refuse + "' (" + want + "), got " +
              (out.refusal ? "'" + out.refusal + "'" :
               (out.error ? "error " + out.error : "a successful run")));
     continue;
   }
-  if (out.refusal) { bad(id, "unexpected refusal: " + out.refusal); continue; }
+  if (out.refusal) { bad(id, "unexpected unsupported case: " + out.refusal); continue; }
   if (out.error) { bad(id, "error: " + out.error); continue; }
 
   var problems = [];
@@ -320,9 +320,9 @@ for (var ii = 0; ii < ids.length; ii++) {
   if (spec.thrRefuse) {
     var twant = sampler.REFUSE[spec.thrRefuse];
     if (out.thresholdRefusal === twant)
-      report.push("four masses refused as expected");
+      report.push("shared-threshold case unsupported as expected");
     else
-      problems.push("expected the four-mass refusal '" + spec.thrRefuse +
+      problems.push("expected shared-threshold unsupported case '" + spec.thrRefuse +
                     "', got " + (out.thresholdRefusal
                       ? "'" + out.thresholdRefusal + "'" : "a scored run"));
   }
@@ -352,14 +352,14 @@ for (var ii = 0; ii < ids.length; ii++) {
     }
   }
 
-  // --- four masses
+  // --- shared-threshold components
   var refThr = (REF[id] && REF[id].thr) || spec.thr;
   var scored = out.threshold && out.threshold.ok && !out.threshold.notScored;
   if (out.threshold && out.threshold.notScored)
     report.push("masses not scored (" + out.threshold.notScored + ")");
   if (refThr && (spec.thr || spec.thr === null)) {
     if (!scored && spec.thr) {
-      problems.push("four masses not produced: " +
+      problems.push("shared-threshold components not produced: " +
                     (out.thresholdRefusal ||
                      (out.threshold && out.threshold.notScored) || "no result"));
     } else if (scored) {

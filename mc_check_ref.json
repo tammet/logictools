@@ -1,5 +1,5 @@
 {
- "_comment": "Reference values for mc_check.js, produced by the Python implementation in /opt/gkreasoner/montecarlo on the same page examples: incl = gkmc.py pos-neg per answer at 4000 trials, seed 1; thr = threshold_worlds.py four masses [for, against, conflict, ignorance] at 100000 draws, seed 1. GKP examples were converted with `gk EX -writejson`. Regenerate when the reference implementation changes. 2026-07-21: answer keys renamed together with the page examples' constants (a/b -> tweety/robin/pingu); the values are unchanged since the names play no role in the probabilities.",
+ "_comment": "Reference values for mc_check.js, produced by the Python implementation in /opt/gkreasoner/montecarlo on the same page examples: incl = gkmc.py positive-minus-negative result per answer at 4000 trials, seed 1; thr = threshold_worlds.py four components [positive support, negative support, conflict, ignorance] at 100000 draws, seed 1. GKP examples were converted with `gk EX -writejson`. Regenerate when the reference implementation changes. Answer-key names play no role in the probabilities.",
  "1": {
   "incl": {
    "polly": 1.0

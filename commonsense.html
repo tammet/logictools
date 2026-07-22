@@ -5,13 +5,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<meta name="description" content="Reasoning under uncertainty online: confidence values, defaults and exceptions, evidence for and against, proofs in the browser.">
+<meta name="description" content="Reasoning under uncertainty online: numeric weights, defaults and exceptions, positive and negative support, proofs in the browser.">
 <meta name="author" content="Tanel Tammet">
 <meta name="keywords" content="reasoning under uncertainty, commonsense reasoning, logic, solver, defaults, exceptions, uncertainty, confidence, nonmonotonic">
 
 <meta itemprop="itemtype" content="https://schema.org/SoftwareApplication">
 <meta itemprop="name" content="Logictools reasoning under uncertainty">
-<meta itemprop="description" content="Reasoning under uncertainty online: confidence values, defaults and exceptions, evidence for and against, proofs in the browser.">
+<meta itemprop="description" content="Reasoning under uncertainty online: numeric weights, defaults and exceptions, positive and negative support, proofs in the browser.">
 <meta itemprop="url" content="https://logictools.org/commonsense.html">
 <meta itemprop="operatingSystems" content="Linux, Windows">
 <meta itemprop="softwareApplicationCategory" content="WebApplication">
@@ -20,7 +20,7 @@
 <meta property="og:url" content="https://logictools.org/commonsense.html">
 <meta property="og:site_name" content="Logictools">
 <meta property="og:type" content="website">
-<meta property="og:description" content="Reasoning under uncertainty online: confidence values, defaults and exceptions, evidence for and against, proofs in the browser.">
+<meta property="og:description" content="Reasoning under uncertainty online: numeric weights, defaults and exceptions, positive and negative support, proofs in the browser.">
 <meta property="fb:admins" content="tanel.tammet">
 
 <link rel="shortcut icon" href="logo.png">
@@ -273,7 +273,7 @@ var mcRun = null;             // state of that run, null when none is going
 
 var MC_REFUSE_KB = "this example uses a large background knowledge base; " +
   "sampling is limited to small self-contained inputs. Pick one of the " +
-  "confidence examples or write your own.";
+  "input-weight examples or write your own.";
 var MC_THRESHOLD_DRAWS = 100000;
 
 function mcWorkerCount() {
@@ -294,7 +294,7 @@ function mcTeardown() {
 // cached copy of an older sampler would answer with an older model: the
 // version below is raised whenever mcsampler.js changes in a way that
 // changes its numbers
-var MC_SAMPLER_VERSION = "2026-07-21";
+var MC_SAMPLER_VERSION = "2";
 
 function mcSpawn(idx) {
   var w = new Worker("mcsampler.js?v=" + MC_SAMPLER_VERSION);
@@ -577,12 +577,12 @@ function mcRenderInclusion() {
     if (order.indexOf(refOrder[i]) < 0) order.push(refOrder[i]);
 
   var html = "<p>Sampling check: " +
-    (subtract ? "world counts" : "provability") + ", " + r.trials +
+    (subtract ? "clause-activation sampling" : "provability") + ", " + r.trials +
     " sampled worlds.</p>";
   html += '<table class="table table-condensed" style="width: auto;">';
   html += "<tr><th>answer</th>";
   html += subtract
-    ? "<th>provable</th><th>negation provable</th><th>net (sampled)</th>"
+    ? "<th>provable</th><th>negation provable</th><th>difference (sampled)</th>"
     : "<th>provable (sampled)</th>";
   html += "<th>95% interval</th><th>gk reports</th></tr>";
   for (i = 0; i < order.length; i++) {
@@ -608,7 +608,7 @@ function mcRenderInclusion() {
   }
   html += "</table>";
   html += "<p>Each world keeps an uncertain statement with probability equal " +
-          "to its confidence and drops it otherwise; a plain proof search " +
+          "to its input weight and drops it otherwise; an unweighted proof search " +
           "then decides the world. Valid worlds: " + n + ", timeouts: " +
           r.invalid + ".</p>";
   html += mcNotesHtml();
@@ -621,7 +621,7 @@ function mcRenderThreshold(msg) {
   if (msg.notScored) {
     var note = mcNotesHtml();
     mcTeardown();
-    showResult("<p>four masses not scored for this input: " +
+    showResult("<p>shared-threshold sampling is unsupported for this input: " +
                mcEsc(msg.notScored) + ".</p>" + note);
     return;
   }
@@ -629,11 +629,12 @@ function mcRenderThreshold(msg) {
   // the threshold query is ground, so gk answers it with true/false
   var gkAns = ref.answers["yes"];
   var d = (gkAns && gkAns.detail) ? gkAns.detail : null;
-  var fields = [["support for", "support_for"],
-                ["support against", "support_against"],
+  var fields = [["positive support", "support_for"],
+                ["negative support", "support_against"],
                 ["conflict", "conflict"],
                 ["ignorance", "ignorance"]];
-  var html = "<p>Sampling check: four masses, " + msg.trials + " draws.</p>";
+  var html = "<p>Sampling check: shared-threshold components, " +
+             msg.trials + " draws.</p>";
   html += '<table class="table table-condensed" style="width: auto;">';
   html += "<tr><th></th><th>sampled</th><th>gk reports</th></tr>";
   for (var i = 0; i < fields.length; i++) {
@@ -643,10 +644,10 @@ function mcRenderThreshold(msg) {
             mcNum(msg[fields[i][1]]) + "</td><td>" + gkv + "</td></tr>";
   }
   html += "</table>";
-  html += "<p>Two random acceptance thresholds per ground atom; evidence " +
-          "counts only if its combined confidence clears a threshold. Plain " +
-          "evidence for and against the same atom faces the same threshold, " +
-          "while a default and the evidence for its exception each get their " +
+  html += "<p>Two random thresholds per ground atom; evidence " +
+          "counts only if its aggregated strength clears a threshold. Positive " +
+          "and negative support for the same atom face the same shared threshold, " +
+          "while a default and support for its exception condition each get their " +
           "own. The worlds selection does not apply to this mode: a draw " +
           "runs no proof search and is nearly free, so it always uses " +
           MC_THRESHOLD_DRAWS + " draws. Compare with the detailed report " +
@@ -683,9 +684,9 @@ function mcPairedDiffCi(posOnly, negOnly, n) {
 
 function switchAdvanced() { $('#advanced_buttons').slideToggle('slow'); }
 
-// The worlds selection applies only to the world counts: a four-mass draw
+// The worlds selection applies only to clause-activation sampling: a shared-threshold draw
 // runs no proof search and is nearly free, so that mode always uses
-// MC_THRESHOLD_DRAWS draws. While four masses is selected, the worlds
+// MC_THRESHOLD_DRAWS draws. While shared threshold is selected, the worlds
 // selector is greyed out and shows "automatic"; the previous choice is
 // restored on switching back.
 var mcTrialsBefore = "1000";
@@ -819,8 +820,8 @@ function clearInput(el) {
 
 <p>
 Explore reasoning when information is uncertain, sources disagree, or
-general rules have exceptions. Facts and rules may carry confidence values,
-and the solver considers evidence both for and against each conclusion.
+general rules have exceptions. Facts and rules may carry numeric weights,
+and the solver evaluates positive and negative support for each conclusion.
 </p>
 <p>
 Start with an example: selecting one loads the problem together with a
@@ -831,7 +832,7 @@ short explanation. You can modify it or enter your own problem, then press
 More about this:
 <a href="#whatModal" data-toggle="modal">how it works</a> &middot;
 <a href="#outputModal" data-toggle="modal">reading the output</a> &middot;
-<a href="#confModal" data-toggle="modal">confidences</a> &middot;
+<a href="#confModal" data-toggle="modal">weights and support</a> &middot;
 <a href="#defaultsModal" data-toggle="modal">defaults</a> &middot;
 <a href="#samplingModal" data-toggle="modal">checking by sampling</a> &middot;
 <a href="#" onclick="gid('syntax').style.display='block'; document.location='#syntax'; return false;">help</a>
@@ -863,9 +864,9 @@ query(flies(X)).</textarea>
           <option value="examples">examples</option>
           <optgroup label="Basics">
             <option value="1">facts, rules, a default</option>
-            <option value="2">confidences</option>
+            <option value="2">input weights</option>
             <option value="3">several sources</option>
-            <option value="4">for and against</option>
+            <option value="4">positive and negative support</option>
             <option value="5">rule chains</option>
             <option value="6">shared evidence</option>
             <option value="7">contested premises</option>
@@ -923,13 +924,13 @@ query(flies(X)).</textarea>
                  aria-label="maximum number of answers"></input>
           <div style="display: inline-block; width: 105px; text-align: center;">confidence&nbsp;limit</div>
           <input type="text" class="form-control" id="confidence" value="0.1" style="width: 55px"
-                 aria-label="confidence limit: the minimum net support margin"></input>
+                 aria-label="confidence limit: the minimum support margin"></input>
           <div style="padding-top: 15px;">
             <div style="display: inline-block; width: 62px; text-align: center;">sampling</div>
             <select class="form-control" style="width: 160px;" id="mc_method"
               aria-label="sampling method" onchange="mcMethodChanged()">
-              <option value="subtract">world counts</option>
-              <option value="threshold">four masses</option>
+              <option value="subtract">clause activation</option>
+              <option value="threshold">shared threshold</option>
             </select>
             <div style="display: inline-block; width: 50px; text-align: center;">worlds</div>
             <select class="form-control" style="width: 100px;" id="mc_trials"
@@ -994,11 +995,11 @@ answer, its confidence and its proof in the <i>Result</i> area, with notes
 below. Then edit the problem, or clear the box and write your own.
 <i>Stop</i> interrupts a long search; <i>Browse</i> loads a file.</p>
 <p>The <i>Advanced</i> button opens further controls: the time limit, the
-detailed report (a four-part breakdown of the evidence for each answer), a
-cap on the number of answers, the confidence limit &mdash; the minimum net
-support margin an answer needs, the evidence for it minus the evidence
-against it &mdash; a
-sampling check that re-estimates the confidences by simulation, and a
+detailed report (a four-component breakdown of the evidence for each
+answer), a cap on the number of answers, the confidence limit &mdash; the
+minimum margin an answer needs, its positive support minus its negative
+support &mdash; a
+sampling check that re-estimates reported values by simulation, and a
 search-strategy field.</p>
 
 <h4>Syntax in brief</h4>
@@ -1009,9 +1010,9 @@ lowercase names are constants, predicates and functions.</p>
 <tr><td><code>bird(b).</code></td>
     <td>a fact</td></tr>
 <tr><td><code>-bird(airplane).</code></td>
-    <td>a negative fact: evidence against</td></tr>
+    <td>a negative fact: support for the negation</td></tr>
 <tr><td><code>0.8::rain(today).</code></td>
-    <td>a fact believed with confidence 0.8</td></tr>
+    <td>a fact with evidence strength 0.8</td></tr>
 <tr><td><code>flies(X) :- bird(X), healthy(X).</code></td>
     <td>a rule: head <code>:-</code> conditions</td></tr>
 <tr><td><code>0.7::rain(X) :- dark_clouds(X).</code></td>
@@ -1069,14 +1070,15 @@ answer combined;</li>
 <code>arithinst(...)</code> &mdash; an arithmetic instantiation;</li>
 <li><code>simp(1, 2)</code> &mdash; a simplification.</li>
 </ul>
-<p>The number at the end of each step is the confidence at that step.
+<p>The number at the end of each step is the stored support value at that step.
 Answers produced by default rules list their <code>blockers</code>: the
 exception conditions the answer depends on. Candidates defeated by
 exceptions or opposing evidence appear as <code>rejected answer</code>
 blocks with the candidate's own proof; a <code>proof against</code> is
 included when the answer's explicit negation was derived. With the
-<i>detailed report</i> checked, each answer also shows the four-part split
-of the belief: support for, support against, conflict, and ignorance.</p>
+<i>detailed report</i> checked, each answer also shows the four-component
+report: support for the answer, support for its negation, conflict, and
+ignorance.</p>
 <p>Failure to find a proof is not by itself proof of falsity: the time
 limit and the search strategy can miss proofs. Only an explicit proof of
 the negation makes a ground answer <code>false</code>.</p>
@@ -1084,7 +1086,7 @@ the negation makes a ground answer <code>false</code>.</p>
 <h4>Full documentation</h4>
 <ul>
 <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/input_languages.md">Input languages</a> &mdash; GKP, JSON, GKS and TPTP in full</li>
-<li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/how_gk_works.md">How gk works</a> &mdash; the algorithms behind confidences, defaults and negative evidence</li>
+<li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/how_gk_works.md">How gk works</a> &mdash; the algorithms behind input weights, defaults and negative support</li>
 <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/cli_reference.md">Command line reference</a> &mdash; every option of the native binaries</li>
 <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/strategy_reference.md">Strategy reference</a> &mdash; the search-strategy JSON accepted under Advanced</li>
 <li><a href="https://github.com/tammet/gkreasoner/tree/master/montecarlo">Monte Carlo checkers</a> &mdash; the sampling interpretation behind the sampling check</li>
@@ -1135,15 +1137,17 @@ default rule normally applies but is withdrawn when an exception is
 established &mdash; birds fly, but a penguin does not. On top of this
 distinction gk adds:</p>
 <ul>
-<li><b>Confidences.</b> Any fact or rule can carry a confidence between 0 and
-1. A proof multiplies the confidences it uses; several independent proofs of
-the same answer are combined so that shared evidence is not counted twice.</li>
-<li><b>Evidence against.</b> The negation of a statement can have its own
-support. gk runs a separate search for the evidence against an answer and
-reports the net result, together with a four-part split into support,
-opposition, conflict and ignorance.</li>
+<li><b>Input weights.</b> Any fact or rule can carry a weight between 0 and 1,
+called <code>confidence</code> in the input syntax. A proof multiplies the
+weights it uses; several independent proofs of the same answer are combined so
+that shared evidence is not counted twice.</li>
+<li><b>Negative support.</b> The negation of a statement can have its own
+support. gk runs a separate search for support for the negation of an answer
+and reports the result of combining the two polarities, together with a
+four-component report: positive support, negative support, conflict and
+ignorance.</li>
 <li><b>Defaults and exceptions.</b> Rules with <code>unless</code> apply only
-when their exception cannot be argued. Competing defaults are resolved by
+when their exception condition cannot be argued. Competing defaults are resolved by
 priorities. A certain strict argument defeats a default. Candidate answers
 defeated by exceptions are shown as rejected answers with their proofs.</li>
 <li><b>Contradiction tolerance.</b> Opposing inputs produce conflict reported
@@ -1170,7 +1174,7 @@ described in
 <p>The first line states the overall result. Common values are
 <code>answer found</code>; <code>evidence below limit</code> (a proof was
 found below the confidence threshold); <code>no information</code> (neither
-side of a ground query was proved); <code>no answers found</code> (an open
+polarity of a ground query was proved); <code>no answers found</code> (an open
 query produced no values); and <code>time limit, proof not found</code>.
 Note that <code>false</code> and <code>no information</code> are different
 outcomes: <code>false</code> means the explicit negation of the question
@@ -1180,7 +1184,8 @@ either way.</p>
 <ul>
 <li><code>answer:</code> a value for the query variable, or
 <code>true</code>/<code>false</code> for a ground query;</li>
-<li><code>confidence:</code> the net degree of belief, 0 to 1;</li>
+<li><code>confidence:</code> the magnitude of the dominant support margin
+after opposition resolution, 0 to 1;</li>
 <li><code>blockers:</code> for answers produced by default rules, the
 exception conditions the answer depends on;</li>
 <li><code>proof for</code> and, when relevant, <code>proof against</code>:
@@ -1191,8 +1196,8 @@ or more) &mdash; a
 decimal as in <code>mp(1.3, 2)</code> names the literal of the clause that
 was used &mdash; <code>cumul(i, j)</code> a combination of independent
 proofs, <code>=</code> an equality step, <code>arithinst</code> an
-arithmetic instantiation. The number at the end of each step is the
-confidence at that step;</li>
+arithmetic instantiation. The number at the end of each step is the stored
+support value at that step;</li>
 <li><code>rejected answer:</code> a candidate defeated by exceptions or
 opposing evidence, shown with the candidate's own proof; a
 <code>proof against</code> is included when the answer's explicit negation
@@ -1203,9 +1208,9 @@ limit and the search strategy can miss proofs. Only an explicit proof of
 the negation produces <code>false</code> for a ground question.</p>
 <p>With the <i>detailed report</i> switched on (under Advanced), each answer
 also shows <code>support</code> and <code>conflict / ignorance</code> lines
-splitting the belief into four parts &mdash; support for, support against,
-conflict (claimed by both sides), and ignorance (claimed by neither); the
-four parts sum to 1 &mdash; plus warning
+giving the four components of the report &mdash; support for the answer,
+support for its negation, conflict (claimed by both polarities), and ignorance
+(claimed by neither polarity); the four components sum to 1 &mdash; plus warning
 flags such as <code>CONTESTED</code>. JSON detail output can also include a
 list of conflict sources.</p>
 <p>JSON input produces JSON output; TPTP input produces TPTP-style output.</p>
@@ -1220,16 +1225,16 @@ list of conflict sources.</p>
       <div class="modal-header">
         <button type="button" class="close" data-dismiss="modal">
             <span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
-            <h4 class="modal-title" style="color: black;">How confidences combine</h4>
+            <h4 class="modal-title" style="color: black;">How weights and support combine</h4>
       </div>
       <div class="modal-body">
 <p>Four rules cover most of what the examples show:</p>
 <ul>
 <li><b>Chaining multiplies.</b> A derivation using statements with
-confidences c1, c2, ... supports its conclusion with c1 &middot; c2 &middot;
+weights c1, c2, ... supports its conclusion with c1 &middot; c2 &middot;
 &hellip; (independence assumption).</li>
 <li><b>Independent supports combine.</b> Independent supports are combined
-so that the confidence increases but never exceeds 1: for supports s1 and
+so that the result increases but never exceeds 1: for supports s1 and
 s2, the combined value is 1 &minus; (1 &minus; s1)(1 &minus; s2) &mdash;
 the answer fails only if both supports fail. This formula is often called
 noisy-OR.</li>
@@ -1237,13 +1242,15 @@ noisy-OR.</li>
 statements each proof uses; only the non-shared parts of two proofs
 cumulate. Two proofs standing on the same uncertain fact are not treated as
 independent confirmation.</li>
-<li><b>Opposition nets.</b> Evidence against an answer subtracts from the
-evidence for it; the contested part is reported as conflict.</li>
+<li><b>Opposing support is resolved.</b> Support for the negation of an
+answer is subtracted from the support for it; the overlapping part is
+reported as conflict.</li>
 </ul>
 <p>A confidence of 1 means full support within gk's evidence model. A
-confidence of 0 means no net support, <i>not</i> that the statement is
-false. Zero may result from ignorance or from exactly balanced evidence for
-and against the statement; the detailed report distinguishes these cases. A
+confidence of 0 means that no support survives, <i>not</i> that the
+statement is false. Zero may result from ignorance or from exactly balanced
+support for the statement and for its negation; the detailed report
+distinguishes these cases. A
 false answer is obtained by deriving the statement's explicit classical
 negation:</p>
 <pre><code>flies(tweety)      evidence for flying
@@ -1271,24 +1278,26 @@ penguins do not. In the readable GKP/GKS notation a default is written with
 <pre><code>flies(X) :- bird(X), unless(-flies(X), 2).</code></pre>
 <p>Internally gk translates <code>unless</code> into a <i>blocker</i>
 literal; the blocker shown in a proof records the exception on which that
-answer depends. gk first derives the conclusion as a candidate carrying the
-blocker, then searches for arguments for the blocking condition:</p>
+answer depends: the exception undercuts that particular rule application
+rather than counting as support for the opposite conclusion. gk first
+derives the conclusion as a candidate carrying the blocker, then searches
+for arguments for the exception condition:</p>
 <ul>
 <li>no blocking proof found &mdash; the answer stands, and its blockers are
 listed;</li>
-<li>a confidence-1 strict argument (no <code>unless</code> in its own
+<li>a weight-1 strict argument (no <code>unless</code> in its own
 support) &mdash; the candidate is defeated and shown as a rejected answer.
 Strict evidence defeats a default independently of any priority;</li>
 <li>an argument from a <i>higher-priority</i> default &mdash; likewise
 defeated;</li>
 <li>an argument from a <i>lower-priority</i> default &mdash; the argument is
 ignored;</li>
-<li>an <i>equal-priority</i> argument &mdash; a standoff: gk commits to
-neither side (the Nixon diamond example).</li>
-<li>uncertain evidence for the exception divides the verdict: the default
-keeps the share not covered by the exception evidence, the rest counts
-against the answer, and the dominant side decides whether the answer stands
-or is shown as rejected (the exception example).</li>
+<li>an <i>equal-priority</i> argument &mdash; the two defaults block each
+other and gk commits to neither polarity (the Nixon diamond example).</li>
+<li>uncertain support for the exception condition splits the report: the
+default keeps the share not covered by the support for the exception, the
+rest becomes support for the negation, and the stronger polarity determines whether
+the answer stands or is shown as rejected (the exception example).</li>
 </ul>
 <p>Priorities are numbers, higher wins &mdash; they matter only when
 defaults compete. In larger knowledge bases priorities can also be derived
@@ -1313,64 +1322,63 @@ calculus.</p>
             <h4 class="modal-title" style="color: black;">Checking results by sampling</h4>
       </div>
       <div class="modal-body">
-<p>gk computes its confidences by rules applied to proofs (see <i>how
-confidences combine</i>). Sampling checks such numbers against a concrete
-reading: treat each confidence as the probability that the statement holds,
-generate many random worlds accordingly, and count what happens. The controls
-are in the <i>Advanced</i> panel.</p>
+<p>gk computes support from input weights by rules applied to proofs (see
+<i>how weights and support combine</i>). Sampling checks the reported values
+against a concrete reading: treat each input weight as an activation
+probability, generate many random worlds accordingly, and count what happens.
+The controls are in the <i>Advanced</i> panel.</p>
 <ul>
-<li><b>World counts</b> build each world by keeping every uncertain
-statement with probability equal to its confidence and dropping it
-otherwise; certain statements are always kept. A plain proof search with no
-confidence arithmetic then decides the world. The result reports, per
+<li><b>Clause activation</b> builds each world by keeping every uncertain
+statement with probability equal to its input weight and dropping it
+otherwise; certain statements are always kept. An unweighted proof search
+then decides the world. The result reports, per
 answer, the fraction of worlds in which it is provable, the fraction in
-which its explicit negation is provable, and the net of the two &mdash; the
-net mirrors how gk weighs evidence against an answer. One proof search runs
+which its explicit negation is provable, and the difference between the two
+&mdash; which mirrors how gk combines support for an answer with support for
+its negation. One proof search runs
 per world in your browser, so thousands of worlds take up to a few
 minutes; the 95% interval in the result shows the sampling precision.</li>
-<li><b>Four masses</b> estimates the split shown by the detailed report:
-support for, support against, conflict and ignorance. Each ground atom
-draws two random acceptance thresholds between 0 and 1; a piece of evidence
-counts only if its combined confidence clears a threshold. Plain evidence
-for and against the same atom faces the same threshold, so the two compete
-for one bar and their overlap is the conflict. A default and the evidence
-for its exception instead get a threshold each, so each side counts only
-where the other missed &mdash; which is how the solver treats them. This
+<li><b>Shared threshold</b> estimates the four components shown by the
+detailed report: positive support, negative support, conflict and ignorance.
+Each ground atom draws two random thresholds between 0 and 1; evidence counts
+only if its aggregated strength clears a threshold. Positive and negative
+support for an atom face the same shared threshold, so their overlap is the
+conflict. A default and support for its exception condition instead get a
+threshold each, so each polarity counts only where the other missed &mdash;
+which is how the solver treats them. This
 mode runs no proof search and finishes immediately; since its draws are
 nearly free it always uses 100000 of them, and the <i>worlds</i> selection
-does not apply. It accepts a narrower
-class of inputs: a question without variables and rules with a single
-conclusion.</li>
+does not apply. It supports a narrower class of inputs: a question without
+variables and rules with a single conclusion.</li>
 </ul>
 <p><b>When the two numbers differ.</b> The solver and the sampling check
-often agree, and agreement supports reading the confidences as chances.
-When they differ, the difference does not by itself mean that either
-number is a mistake &mdash; they answer different
-questions. The solver weighs arguments: it builds the best proof for an
-answer and the best proof against it, and reports what remains of the
-support once the opposition is subtracted. The sampling check plays out
-scenarios: it treats each confidence as the chance that the statement
-holds, deals out many random scenarios, and counts in how many the answer
-can be derived, minus how many where its opposite can.</p>
+often agree, and agreement supports an activation-probability reading of the
+input weights. A persistent difference indicates an implementation or semantic
+discrepancy. In the documented cases below, the methods answer different
+questions: the solver evaluates the best proof for an answer and the best proof
+for its negation, resolving opposing support before propagation. The
+clause-activation sampler counts the worlds in which the answer is derivable
+and subtracts the worlds in which its negation is derivable.</p>
 <p>One example on this page shows the two calculations reaching the same
-verdict from two directions, and one shows them pulling apart.</p>
+result from two directions, and one shows them pulling apart.</p>
 <p>In <i>an exception</i> (example 9), the solver rejects Tweety flying
-with 0.8 against: the flying default holds only in the one case in ten
-where the contrary evidence is absent, so 0.1 supports flying, 0.9 supports
-the opposite, and the balance is 0.8 against. The sampling check arrives at
-the same split from the scenario side: in 90 of 100 scenarios the evidence
-against Tweety exists, and there "Tweety does not fly" is itself provable;
+with a negative margin of 0.8: the flying default holds only in the one case
+in ten where support for its exception condition is absent, so positive
+support is 0.1 and negative support is 0.9. The sampling check arrives at the
+same split: in 90 of 100 worlds the evidence for Tweety not flying is active,
+and there "Tweety does not fly" is itself provable;
 in the other 10 the default goes through. The sampled table shows the same
 two ingredients &mdash; provable in 0.1 of the worlds, the negation
-provable in 0.9 &mdash; and its net of about &minus;0.8 matches the
-solver's verdict.</p>
+provable in 0.9 &mdash; and its difference of about &minus;0.8 matches the
+solver's result.</p>
 <p>In <i>contested premises</i> (example 7), the solver reports 0.27: it
-first weighs the bird question on its own &mdash; 0.5 for, 0.2 against
-leaves 0.3 &mdash; and lets only that survivor feed the flying rule. The
+first resolves the opposing support on the bird premise &mdash; 0.5 positive
+and 0.2 negative leaves 0.3 usable support &mdash; and lets only that support
+feed the flying rule. The
 sampling check reports about 0.45, because "Tweety is not a bird" never
 makes "Tweety does not fly" derivable, so in a scenario count the doubt
-changes nothing. Here the solver is deliberately the more cautious: doubt
-about a premise reduces every conclusion built on it.</p>
+changes nothing. In the solver's dependency-aware evaluation, doubt about a
+premise reduces every conclusion built on it.</p>
 <p>Two further sources of difference: a recursive rule can succeed through
 many different sampled paths while the solver reports the evidence of a
 selected proof, and defaults with priorities are sampled only in the
@@ -1434,16 +1442,17 @@ against it.</p>
 <code>in(frm_1)</code> marks an input statement;
 <code>mp(1.1, 2)</code> means the step was derived from steps 1 and 2 by
 <a href="https://en.wikipedia.org/wiki/Resolution_(logic)">resolution</a>
-(the decimal names the literal used). The number after each step name is
-the confidence of that step.</p>
+(the decimal names the literal used). The number after each step name is the
+stored support value at that step.</p>
 <p>The internal literal <code>$ans(X)</code> collects the answer value: the
 last step of tweety's proof contains <code>$ans(tweety)</code>.</p></div>
 
-<div id="example_cs2_input_notes"><h3>Example 2: confidences</h3>
-<p>A number between 0 and 1 before <code>::</code> states how strongly the
-statement is believed. A statement without the prefix has confidence 1.</p>
-<p>Both the facts and the rule can be uncertain. gk computes the confidence of
-the answer from the confidences of everything used in the proof.</p></div>
+<div id="example_cs2_input_notes"><h3>Example 2: input weights</h3>
+<p>A number between 0 and 1 before <code>::</code> is the input weight. For a
+fact it is an evidence strength; for a rule it is a rule strength. A statement
+without the prefix has weight 1.</p>
+<p>Both facts and rules can be uncertain. gk computes support for the answer
+from the weights of the inputs used in the proof.</p></div>
 <pre><code id="example_cs2_input_code">0.8::dark_clouds(today).
 0.7::rain(X) :- dark_clouds(X).
 
@@ -1453,21 +1462,21 @@ query(rain(today)).
 % rule connecting dark clouds with rain.</code></pre>
 <div id="example_cs2_proof_notes">
 <p>The answer is <code>true</code> with confidence
-<code>0.56 = 0.8 * 0.7</code>. A proof chain multiplies the confidences of
+<code>0.56 = 0.8 * 0.7</code>. A proof chain multiplies the input weights of
 the statements it uses, under the assumption that their uncertainties are
 independent.</p></div>
 
 <div id="example_cs3_input_notes"><h3>Example 3: several sources</h3>
-<p>Two independent sources support the same forecast with different
-confidences. Their combined support is greater than either source alone.</p></div>
+<p>Two independent sources support the same forecast with different evidence
+strengths. Their combined support is greater than either source alone.</p></div>
 <pre><code id="example_cs3_input_code">0.5::rain(today).
 0.6::rain(today).
 
 query(rain(today)).
 
 % Two independent forecasts both predict rain today,
-% one with confidence 0.5 and the other with 0.6.
-% What is the combined confidence?</code></pre>
+% one with evidence strength 0.5 and the other with 0.6.
+% What is the combined support?</code></pre>
 <div id="example_cs3_proof_notes">
 <p>The combined confidence is <code>0.8</code>. For independent evidence gk
 combines the two proofs as
@@ -1478,11 +1487,11 @@ programming.</p>
 them. Importantly, gk records which input facts each proof uses and merges this
 way only proofs based on different evidence: see the "shared evidence" example.</p></div>
 
-<div id="example_cs4_input_notes"><h3>Example 4: for and against</h3>
+<div id="example_cs4_input_notes"><h3>Example 4: positive and negative support</h3>
 <p>The minus sign is explicit negation: <code>-flies(tweety)</code> is
 evidence that Tweety does not fly, not an absence of evidence. Here both the
 statement and its negation have direct support. gk retains and assesses both
-sides.</p>
+polarities.</p>
 <p>The <i>detailed report</i> option (in Advanced) is switched on for this
 example: it adds a breakdown of the evidence to the answer.</p></div>
 <pre><code id="example_cs4_input_code">0.7::flies(tweety).
@@ -1490,26 +1499,26 @@ example: it adds a breakdown of the evidence to the answer.</p></div>
 
 query(flies(tweety)).
 
-% Evidence for and against the same statement:
-% 70% belief that Tweety flies, 40% belief that it does not.</code></pre>
+% Input weights for a statement and its explicit negation:
+% strength 0.7 for flying, 0.4 for not flying.</code></pre>
 <div id="example_cs4_proof_notes">
 <p>The answer <code>true</code> has confidence <code>0.3</code>: the positive
-evidence 0.7 minus the part 0.4 contested by the negative evidence.</p>
+support 0.7 minus the part 0.4 contested by the negative support.</p>
 <p>The detail lines split the total belief into four parts which sum to 1:</p>
 <pre><code>support: 0.3 for, 0 against
 conflict: 0.4   ignorance: 0.3</code></pre>
-<p><i>Support</i> is the uncontested evidence on each side. <i>Conflict</i> is
-the part claimed by both sides at once. <i>Ignorance</i> is the part supported
-by neither side. The <code>CONTESTED</code> flag warns that the answer has
-real evidence against it, not merely weak evidence for it.</p>
+<p><i>Positive support</i> and <i>negative support</i> are the unopposed
+components. <i>Conflict</i> is the component claimed by both polarities, and
+<i>ignorance</i> is claimed by neither. The <code>CONTESTED</code> flag warns
+that the answer has real negative support, not merely weak positive support.</p>
 <p>Both the <code>proof for</code> and the <code>proof against</code> are
-printed, so you can see exactly what supports each side.</p></div>
+printed, so you can see exactly what supports each polarity.</p></div>
 
 <div id="example_cs5_input_notes"><h3>Example 5: rule chains</h3>
-<p>Uncertain rules with variables act as weak general tendencies: anybody
-smokes with confidence 0.3, any two people are friends with confidence 0.1,
-friendship is roughly symmetric, and a susceptible person with a smoking
-friend has an extra 0.2 tendency to smoke. On top of these there are two
+<p>Uncertain rules with variables act as weak general tendencies: the base
+smoking rule has strength 0.3, the friendship rule has strength 0.1,
+friendship is roughly symmetric, and the smoking-influence rule has strength
+0.2. On top of these there are two
 certain facts about <code>chris</code> and <code>sam</code>.</p>
 <p>The question is how strongly the rules and facts together support
 <code>smokes(sam)</code>.</p></div>
@@ -1535,7 +1544,7 @@ the symmetry rule (0.9) and the general 0.1 tendency,
 <code>1 - (1 - 0.9)(1 - 0.1) = 0.91</code>. The chain then contributes
 <code>0.6 * 0.91 * 0.2 = 0.1092</code>, and the noisy-or with the base
 tendency gives <code>1 - (1 - 0.3)(1 - 0.1092) = 0.3764</code>. gk finds
-the separate proofs and cumulates them, multiplying confidences along each
+the separate proofs and cumulates them, multiplying rule strengths along each
 chain and combining the chains with the noisy-or rule, without counting the
 shared friendship evidence twice.</p>
 <p>The <code>cumul</code> steps in the proof show where the independent
@@ -1543,8 +1552,8 @@ derivations are merged.</p></div>
 
 <div id="example_cs6_input_notes"><h3>Example 6: shared evidence</h3>
 <p>Two rules predict rain: one from dark clouds and falling pressure
-(confidence 0.72), another from dark clouds and the radar (confidence
-0.63). Combining the two proofs naively as independent supports would give
+(support 0.72), another from dark clouds and the radar (support 0.63).
+Combining the two proofs naively as independent supports would give
 <code>1 - 0.28 * 0.37 = 0.896</code>.</p>
 <p>But that would be wrong: both proofs stand on the <i>same</i> uncertain
 observation <code>dark_clouds(today)</code>. If the cloud observation
@@ -1566,13 +1575,13 @@ proof uses, notices that <code>dark_clouds(today)</code> is shared, and
 combines only the non-shared parts independently:
 <code>0.9 * (1 - (1 - 0.8) * (1 - 0.7)) = 0.9 * 0.94 = 0.846</code>.</p>
 <p>Replacing <code>dark_clouds(Day)</code> in the second rule with an
-independent observation of confidence 0.9 would remove the overlap and
+independent observation with evidence strength 0.9 would remove the overlap and
 change the result to 0.8964.</p></div>
 
 <div id="example_cs7_input_notes"><h3>Example 7: contested premises</h3>
 <p>Here the conflict is not about the queried statement itself but about a
-premise used to derive it: <code>bird(tweety)</code> has evidence both for
-(0.5) and against (0.2).</p>
+premise used to derive it: <code>bird(tweety)</code> has positive support 0.5
+and negative support 0.2.</p>
 <p>The detailed report is switched on to show how gk flags this.</p></div>
 <pre><code id="example_cs7_input_code">0.5::bird(tweety).
 0.2::-bird(tweety).
@@ -1585,24 +1594,26 @@ query(flies(tweety)).
 % how does that affect the derived conclusion?</code></pre>
 <div id="example_cs7_proof_notes">
 <p>The conclusion gets confidence <code>0.27</code>: the flying rule (0.9)
-applied to the net support of its premise. The
+applied to the support of its premise that survives the opposing evidence.
+The
 <code>flags: CONTESTED</code> line marks that a premise of the proof has
 opposing evidence.</p>
 <p>JSON detail output can also list contested atoms as
 <code>conflict_sources</code>; see the "conflict detail" example under
 <i>more examples</i>.</p>
 <p>This example is also a good one for the <i>sampling check</i> under
-Advanced, because its modes pull in different directions. Reading each
-confidence as an independent chance and counting the worlds in which
+Advanced, because its modes pull in different directions. Reading each input
+weight as an independent activation probability and counting the worlds in which
 <code>flies(tweety)</code> is provable gives about 0.45 (a finite sample
 lands nearby, for example 0.46), not 0.27: that
 count includes every world where the bird premise holds, even the worlds
-where "tweety is not a bird" holds alongside it, so the evidence against
-the premise changes nothing. The <i>four masses</i> mode instead arrives at
+where "tweety is not a bird" holds alongside it, so the negative support for
+the premise changes nothing. The <i>shared threshold</i> mode instead arrives at
 gk's own 0.27, and not by accident: there the two bird statements compete
 for one shared acceptance threshold, so the premise counts only in the
-<code>0.5 - 0.2 = 0.3</code> margin between them &mdash; the same netting
-gk computes &mdash; and the flying rule fires in 0.9 of that. The
+<code>0.5 - 0.2 = 0.3</code> margin between them &mdash; the same
+subtraction gk computes &mdash; and the flying rule fires in 0.9 of that.
+The
 difference between the first reading and gk is genuine; see <i>checking by
 sampling</i> above.</p></div>
 
@@ -1624,7 +1635,7 @@ query(flies(X)).
 % it can be shown that the bird does not fly.</code></pre>
 <div id="example_cs8_proof_notes">
 <p>Both <code>tweety</code> and <code>robin</code> are answers with
-confidence 1: there is no evidence against either of them flying, so the
+confidence 1: there is no support for either negation, so the
 defaults go through.</p>
 <p>Each answer records its <code>blockers</code> &mdash; the exception
 condition it depends on, e.g. <code>unless(-flies(robin), 2)</code>. The
@@ -1635,8 +1646,9 @@ evidence of the exceptions and found none.</p>
 remains.</p></div>
 
 <div id="example_cs9_input_notes"><h3>Example 9: an exception</h3>
-<p>The new fact <code>0.9::-flies(tweety)</code> is evidence for the
-exception of the default, but it is uncertain: 0.9 rather than 1.</p></div>
+<p>The new fact <code>0.9::-flies(tweety)</code> supports the default's
+exception condition and the negation of its conclusion, with evidence
+strength 0.9 rather than 1.</p></div>
 <pre><code id="example_cs9_input_code">bird(tweety).
 bird(robin).
 0.9::-flies(tweety).
@@ -1645,11 +1657,12 @@ flies(X) :- bird(X), unless(-flies(X), 2).
 
 query(flies(X)).
 
-% As before, but now there is 90%-confidence evidence
+% As before, but now evidence of strength 0.9 says
 % that Tweety does not fly.</code></pre>
 <div id="example_cs9_proof_notes">
-<p><code>robin</code> still flies with confidence 1. For <code>tweety</code>
-the 0.9 exception evidence outweighs the default: <code>tweety</code> is
+<p><code>robin</code> still flies with confidence 1. For <code>tweety</code>,
+support of strength 0.9 for the exception condition exceeds the default's
+surviving positive support: <code>tweety</code> is
 shown as a rejected answer with confidence against
 <code>0.9 - 0.1 = 0.8</code>. The default holds only in the one case in ten
 where the contrary evidence is absent, so 0.1 supports flying and 0.9
@@ -1725,7 +1738,7 @@ lines).</p>
 the bathroom, John to the kitchen. Where is John at the end?</p>
 <p>The point is what happens <i>between</i> the movements: nobody restates
 where John is while Mary moves, so his location must <i>persist</i> on its
-own. The last rule states this as a default with confidence 0.99: a location
+own. The last rule states this as a default with rule strength 0.99: a location
 carries over to the next situation unless that person moved. Defeat of
 persistence by known events is the classical
 <a href="https://en.wikipedia.org/wiki/Frame_problem">frame problem</a>
@@ -1797,7 +1810,7 @@ query(boxes_needed(Boxes)).
 % shows the arithmetic setting used to find a value for Boxes.</code></pre>
 <div id="example_cs13_proof_notes">
 <p>The answer is <code>7</code> with confidence 0.8 (the rule's own
-confidence). The proof shows the instantiation step where
+strength). The proof shows the instantiation step where
 <code>Boxes = 7</code> makes <code>7 * 6 = 42</code> true.</p>
 <p>This is bounded search for satisfying values, not equation solving: it
 handles one unknown conservatively (<code>arith_instantiation: 1</code>), and
@@ -1828,11 +1841,11 @@ question matches directly.</p></div>
 
 <div id="example_cs15_input_notes"><h3>Example 15: conflict sources in detail</h3>
 <p>Several sources give evidence about whether <code>tweety</code> is a bird
-&mdash; two sightings for, one doubt against. One rule supports flying from
+&mdash; two positive sightings and one negative report. One rule supports flying from
 birdness; the other supports not flying from evidence that something is not
 a bird. The detailed report (switched on for this
-example) names which atom the conflict comes from. Note that confidences
-can also be written as percentages: <code>90</code> means 0.9.</p></div>
+example) names which atom the conflict comes from. Note that input weights can
+also be written as percentages: <code>90</code> means 0.9.</p></div>
 <pre><code id="example_cs15_input_code">[
 {"@name":"sighting1","@confidence":90,"@logic":["bird","tweety"]},
 {"@name":"sighting2","@confidence":80,"@logic":["bird","tweety"]},
@@ -1869,7 +1882,7 @@ example 2 because the two inputs encode the same statements.</p></div>
 <div id="example_cs17_input_notes"><h3>Example 17: GKS notation</h3>
 <p>The third input notation: rules are written premises-first with
 <code>&amp;</code> and <code>=&gt;</code>, closer to textbook logic than the
-Prolog-style <code>:-</code> form. Everything else &mdash; confidences,
+Prolog-style <code>:-</code> form. Everything else &mdash; input weights,
 queries, <code>unless</code> &mdash; is the same.</p>
 <p>gk detects the notation automatically from the input text, so all the
 notations work in this same text box.</p></div>
@@ -2127,7 +2140,7 @@ are part of the llmpipe encoding scheme, not something gk requires.</p></div>
 <div id="example_cs21_proof_notes">
 <p>The expected answer is <code>false</code>: John, a penguin, does not fly.
 The "birds can fly" sentence became a default (note the <code>$block</code>
-in its clause and its 0.9 confidence) which the strict penguin sentence
+in its clause and its 0.9 rule strength) which the strict penguin sentence
 defeats, exactly the penguin pattern from the earlier examples &mdash; only
 now produced automatically from English text.</p></div>
 
@@ -2199,7 +2212,7 @@ has_part(h1, leg).
 has_part(b1, leg).      has_part(b1, wing).     has_part(b1, feathers).
 has_part(a1, engine).   has_part(a1, wing).
 
-% Default classification rules with confidences; each applies unless the
+% Default classification rules with weights; each applies unless the
 % opposite classification is provable, taxonomy-strength blockers.
 0.3::isa(X, human) :-
     has_part(X, leg),      unless(-isa(X, human), tax(human)).
@@ -2224,7 +2237,7 @@ query(isa(X, organism)).</code></pre>
 bird evidence from leg, wing and feathers cumulates to 0.936, the
 independent human evidence (0.3, from the leg) joins it &mdash;
 <code>1 - (1 - 0.936)(1 - 0.3) = 0.9552</code> &mdash; and the opposing
-airplane default (0.4, from the wing) nets against that:
+airplane default (0.4, from the wing) subtracts from that:
 <code>0.9552 - 0.4 = 0.5552</code>. The answer is
 reported through both its human-default and bird-default derivations, with
 the <code>tax(...)</code> blockers listed. Each block is one derivation

@@ -1,40 +1,41 @@
 // Web Worker for the sampling check ("Monte Carlo") on commonsense.html.
 //
-// Two independent estimates of gk's confidence numbers:
+// Two independent estimates of GK's reported confidence values:
 //
-//   inclusion sampling  -- a confidence is read as the probability that the
-//     statement holds. Each sampled world keeps every uncertain ground clause
-//     with that probability and drops it otherwise; a plain proof search
+//   clause-activation sampling -- an input weight is read as the activation
+//     probability of a ground clause. Each sampled world activates or drops
+//     every uncertain ground clause independently; an unweighted proof search
 //     (gk -nonegative -plain) then decides the world. Reported as the
 //     frequency of provability, optionally minus the frequency in which the
 //     answer's negation is provable (gk's own pos-neg functional).
 //
-//   threshold sampling  -- the four masses support_for / support_against /
-//     conflict / ignorance. Each ground atom draws two independent
-//     acceptance bars; evidence counts only when its pooled confidence
-//     clears a bar. Plain opposed evidence about one atom faces one shared
-//     bar (gk's netting), while a default and its counter-evidence gate each
-//     other through both bars (gk's settled defaults arithmetic). Runs no
-//     proof search at all.
+//   shared-threshold sampling -- the four components support_for /
+//     support_against / conflict / ignorance. Each ground atom draws two
+//     independent thresholds; evidence counts only when its aggregated
+//     strength clears a threshold. Ordinary positive and negative support for
+//     one atom face one shared threshold (GK's opposition resolution). A
+//     default and support for its exception condition use both thresholds.
+//     This mode runs no proof search.
 //
 // This is a port of the reference implementation in the gkreasoner
-// repository: montecarlo/gkmc.py (inclusion) and montecarlo/threshold_worlds.py
-// (threshold). Each block below names the Python function it ports. The
+// repository: montecarlo/gkmc.py (clause activation) and
+// montecarlo/threshold_worlds.py (shared threshold). Each block below names
+// the Python function it ports. The
 // semantics are the Python ones; where the browser pipeline has to differ,
 // the comment says so. The documented differences are:
 //
-//   * clauses and confidences come from gk's versioned clause export
+//   * clauses and input weights come from gk's versioned clause export
 //     (-defworlds -clausify -outformat json) instead of from a re-parse of
 //     the input file, so any input syntax the page accepts can be sampled
 //     and no parser is duplicated here;
-//   * the export's confidences are post-root-split (a statement splitting
+//   * the export's weights are post-root-split (a statement splitting
 //     into k clauses carries the split values, whose product is the stated
-//     confidence), where gkmc.py reuses the unsplit statement confidence for
+//     weight), where gkmc.py reuses the unsplit statement weight for
 //     every clause and warns about it;
-//   * threshold mode scores one closed query. The reference runner also
+//   * shared-threshold mode scores one closed query. The reference runner also
 //     evaluates an OPEN query, one closed instance at a time over the named
-//     constants; the page's four-mass panel shows a single table, so an open
-//     query is refused here instead.
+//     constants; the page's shared-threshold panel shows a single table, so an
+//     open query is reported as unsupported here instead.
 //
 // One module instance decides many worlds: gk frees its database when main
 // returns, and repeated callMain with IDENTICAL flags is safe. gk does not
@@ -101,9 +102,10 @@ function post(msg) {
     self.postMessage(msg);
 }
 
-// ---- refusals ------------------------------------------------------------
-// A refusal is a property of the input, not a failure: sampling accepts a
-// small finite fragment and says plainly when the input is outside it.
+// ---- unsupported cases --------------------------------------------------
+// The implementation field is named "refusal". It identifies an input outside
+// the small finite fragment supported by a sampling method, not a runtime
+// failure.
 
 var REFUSE = {
   functions: "the input uses function terms (nested terms as arguments), " +
@@ -111,10 +113,10 @@ var REFUSE = {
   builtin: "the input uses arithmetic, equality or another built-in, which " +
            "sampling does not support.",
   // a named priority is ["$", name] in the export: tax(bird) and a bare
-  // name look the same there. Inclusion sampling lets gk handle them in each
-  // world; the four-mass model compares priorities itself and cannot.
+  // name look the same there. Clause-activation sampling lets gk handle them
+  // in each world; the shared-threshold model compares priorities itself.
   namedpriority: "the input uses named blocker priorities instead of " +
-                 "numbers; the four-mass estimate compares numeric " +
+                 "numbers; shared-threshold sampling compares numeric " +
                  "priorities only.",
   noquery: "no query found in the input.",
   multilit: "sampling supports single-literal questions only.",
@@ -123,8 +125,8 @@ var REFUSE = {
   clausify: "could not obtain clauses from gk (unexpected clausifier output).",
   dbfull: "a sampled world did not fit the solver database in the browser; " +
           "sampling is limited to small inputs.",
-  thrOpen: "the four-mass estimate needs a question without variables.",
-  thrDirectional: "the four-mass estimate accepts only directional rules " +
+  thrOpen: "shared-threshold sampling needs a question without variables.",
+  thrDirectional: "shared-threshold sampling supports only directional rules " +
                   "with a single conclusion."
 };
 
@@ -200,7 +202,7 @@ function walkAtom(atom, onConst, onVar) {
   }
   if (!Array.isArray(atom) || !atom.length) return;
   if (atom[0] === "$block") {
-    // the priority (atom[1]) is gk's business: inclusion sampling hands the
+    // the priority (atom[1]) is gk's business: clause-activation sampling hands the
     // blocker back to gk unchanged in every world
     for (var i = 2; i < atom.length; i++) walkAtom(atom[i], onConst, onVar);
     return;
@@ -291,7 +293,7 @@ function eachTuple(consts, n, cb) {
 // ---- the clause export (port of gkmc.load_clausified) --------------------
 
 // Parse the output of `gk input -defworlds -clausify -outformat json` and
-// return its clause items. gk owns the clausifier and the confidence split;
+// return its clause items. gk owns the clausifier and the input-weight split;
 // this tool only consumes that serialization and fails loudly on drift.
 function parseClauseExport(text) {
   var arr;
@@ -327,10 +329,10 @@ function nameRuns(items) {
   return runs;
 }
 
-// ---- inclusion sampling: the ground pool (port of gkmc.ground_pool) ------
+// ---- clause-activation sampling: ground pool (port of gkmc.ground_pool) ---
 
 // Returns {pool, goals, warnings}. pool entries are
-// {s: statement index, c: confidence, cl: ground clause}: `s` groups the
+// {s: statement index, c: weight, cl: ground clause}: `s` groups the
 // ground instances of one input statement, which is what shared draws need.
 function groundPool(items) {
   var runs = nameRuns(items);
@@ -351,7 +353,7 @@ function groundPool(items) {
       for (j = 0; j < run.items.length; j++) goals.push(run.items[j]["@logic"]);
       continue;
     }
-    // gk splits a statement's confidence over the clauses it produces (the
+    // gk splits a statement's weight over the clauses it produces (the
     // split need not be even), so the drawn values differ from the number in
     // the input; say so when it happens.
     var uncertainSplit = false;
@@ -366,7 +368,7 @@ function groundPool(items) {
       }
       warnings.push("statement " + run.name + " splits into " +
                     run.items.length + " clauses, drawn separately at " +
-                    "confidences " + parts.join(", ") + "; together they " +
+                    "weights " + parts.join(", ") + "; together they " +
                     "carry the stated " + fmtConf(joint) + ".");
     }
     var seen = {};
@@ -470,7 +472,7 @@ function questionInstances(q, values) {
 // ---- worlds (port of gkmc.Runner.sample / world_doc / parse_world_answers)
 
 // The world of trial t: every certain clause, plus each uncertain one drawn
-// with probability equal to its confidence. Deterministic in (seed, t).
+// with probability equal to its input weight. Deterministic in (seed, t).
 function sampleWorld(pool, seed, trial, draws) {
   var rng = rngFor(seed, trial);
   var active = [], shared = {};
@@ -502,7 +504,7 @@ function worldDoc(active, questions) {
 // World runs decide PURE PROVABILITY (with defaults and blockers): gk's own
 // negative-evidence subtraction must not run, or a contradictory world would
 // report "evidence below limit" instead of "provable". -plain tells gk the
-// world has no confidences.
+// world has no input weights.
 var WORLD_ARGS = ["input", "-nonegative", "-plain", "-seconds", "2"];
 
 // The answer keys proved in one world, or null when the world could not be
@@ -588,12 +590,12 @@ function pairedDiffCi(posOnly, negOnly, n, z) {
 }
 
 // ==========================================================================
-// threshold sampling -- port of montecarlo/threshold_worlds.py
+// shared-threshold sampling -- port of montecarlo/threshold_worlds.py
 // ==========================================================================
 //
 // Each ground atom with evidence draws one acceptance threshold U in [0,1].
-// The evidence for the atom is pooled (noisy-or) into one strength a, the
-// evidence against it into b, and the SAME U decides both sides:
+// Positive evidence for the atom is pooled (noisy-or) into strength a,
+// negative evidence into b, and the SAME U decides both polarities:
 //
 //   supported for      iff  b < U <= a
 //   supported against  iff  a < U <= b
@@ -834,9 +836,9 @@ function buildTestimonies(pool, queryAtom) {
   return { testimonies: testimonies, atoms: atoms };
 }
 
-// Port of threshold_worlds._mark_pairs: a testimony is a paired exception of
-// a main rule when they share the head atom with opposite sign and the main
-// rule's blocker atom occurs in the exception's body.
+// Port of threshold_worlds._mark_pairs: a rule-instance contribution (stored
+// in `testimonies`) is paired with a main rule when they have opposite heads
+// for one atom and the main rule's exception condition occurs in its body.
 function markPairs(testimonies) {
   var byAtom = {}, i;
   for (i = 0; i < testimonies.length; i++) {
@@ -876,12 +878,12 @@ function present(t, state) {
   return true;
 }
 
-// Port of threshold_worlds._pools: pooled pro/con strengths of the PRESENT
-// testimonies, the paired-exception residual fill, and each side's netting
-// rank. A side's rank is the maximum mutual-block rank of its present
-// testimonies when EVERY present testimony on that side carries one (a gated
-// default); it is 0 as soon as the side has one present plain (unranked)
-// testimony, and -1 while the side has no present testimony at all.
+// Port of threshold_worlds._pools: pooled positive/negative strengths of the
+// PRESENT rule-instance contributions, the paired-exception residual fill,
+// and each polarity's mutual-block rank. A polarity's rank is the maximum
+// mutual-block rank of its present contributions when every contribution in
+// that polarity comes from a ranked default. It is 0 when any present
+// contribution is unranked, and -1 when there is no present contribution.
 function poolsOf(ts, state) {
   var pro = [], con = [], filled = false, rankPro = -1, rankCon = -1, i, j;
   var mainProBlocked = false;
@@ -913,19 +915,19 @@ function poolsOf(ts, state) {
 
 // Port of threshold_worlds._net: (pro_usable, con_usable, conflict) for one
 // atom in one world. u2 = [uPro, uCon]: two independent uniforms per atom.
-// Plain contests use the SHARED bar uPro for both sides (the netting of
-// opposed evidence); the mutual-gate cases use both bars:
+// Ordinary opposition uses the SHARED threshold uPro for both polarities;
+// default interactions use both thresholds:
 //
-//   both sides gated, unequal ranks -> the award on the shared bar (the
-//     higher-ranked side takes the overlap, the lower keeps its excess);
-//   both sides gated, equal ranks   -> the symmetric mutual gate: each side
-//     fires on its own bar and survives only if the other missed;
-//   one side gated                  -> the one-sided exclusive gate: the
-//     plain side fires on its own bar, the gated side survives only off the
-//     plain side's mass; no conflict mass (the regions are exclusive).
+//   opposed defaults, unequal ranks -> strict-priority override (the
+//     higher-ranked polarity takes the overlap, the lower keeps its excess);
+//   opposed defaults, equal ranks   -> mutual blocking: each polarity fires
+//     on its own threshold and survives only if the other missed;
+//   default opposed by ordinary evidence -> exclusive outcome regions: the
+//     ordinary polarity fires on its threshold, and the default survives only
+//     where the ordinary evidence misses; no conflict component.
 //
-// The independent second bar is what makes for = a(1-b) a product; a single
-// shared bar cannot express it.
+// The independent second threshold is what makes for = a(1-b) a product; a
+// single shared threshold cannot express it.
 function netOf(p, u2) {
   var ul = u2[0], ur = u2[1];
   var lo = Math.min(p.a, p.b);
@@ -937,7 +939,7 @@ function netOf(p, u2) {
   }
   if (p.a > 0 && p.b > 0 && gatedPro && gatedCon) {
     // equal ranks: both-fire and neither-fire are ignorance (the certain
-    // limit is the Nixon standoff)
+    // limit is full ignorance from equal-priority mutual blocking)
     var fp = ul <= p.a, fc = ur <= p.b;
     return { pro: fp && !fc, con: fc && !fp, conflict: false };
   }
@@ -1193,15 +1195,15 @@ function thresholdEvaluate(pool, queryAtom, querySign, trials, seed) {
   if (order === null) {
     var sp = sccPlan(testimonies, atoms, byHead, queryAtom);
     // a cycle through a contested atom, or through a blocker away from the
-    // query, has no unique fixpoint, so the model declines instead of
-    // guessing (the page prints the reason)
+    // query, has no unique fixpoint, so the model reports the case as
+    // unsupported (the page prints the reason)
     if (sp.plan === null) return { notScored: sp.why };
     plan = sp.plan;
   }
 
-  // unequal mutual ranks are settled: the award is the adjudicated reading
-  // and needs no annotation. The rank-restricted DISTINCT-atom check remains
-  // annotated: this model carries a testimony's own mutual rank, not a
+  // Unequal mutual ranks use the defined strict-priority override and need no
+  // annotation. The rank-restricted DISTINCT-atom check remains annotated:
+  // this model carries a rule-instance contribution's own mutual rank, not a
   // derivation-deep guard.
   var rankNote = hasRankRestrictedBlocker(testimonies, byHead);
   var tally = { forr: 0, against: 0, conflict: 0, ignorance: 0 };
@@ -1377,11 +1379,9 @@ function doTrials(job) {
 }
 
 // The solver instance has died (Module.onAbort), so the rest of the range
-// needs a fresh worker. With gk 1.0.3 this is a pure backstop: the database
-// leak on the "no answers found" exit path that used to exhaust the heap
-// after a few dozen such worlds is fixed in gk itself, and one instance
-// decides thousands of worlds without loss. The retire protocol stays so a
-// future regression degrades to slower sampling instead of a dead run.
+// needs a fresh worker. This is a safety backstop: one healthy instance
+// decides thousands of worlds. The retire protocol ensures that an abort
+// degrades to slower sampling instead of a dead run.
 function retiring() { return moduleDead; }
 
 // cmd "pair": the per-answer pairing pass. The same worlds are re-generated
@@ -1426,7 +1426,7 @@ function doPair(job) {
            consumed: i, retire: (i < job.trials.length) };
 }
 
-// cmd "threshold": the four masses; runs no proof search.
+// cmd "threshold": the four-component shared-threshold report; no proof search.
 function doThreshold(job) {
   var res = thresholdEvaluate(job.pool, job.queryAtom, job.querySign,
                               job.trials, job.seed);
