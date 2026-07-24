@@ -737,6 +737,12 @@ function selectExample(level) {
   var other = (level == 'simple') ? gid("select_advanced_example") : gid("select_example");
   var value = sel.options[sel.selectedIndex].value;
   if (other) other.selectedIndex = 0;
+  // The start-here note stays visible on page open and on the first example,
+  // and is hidden once any other example is chosen.
+  var startNote = gid("startNote");
+  if (startNote)
+    startNote.style.display =
+      (!value || value == "examples" || value == "1") ? "" : "none";
   resetAdvanced();
   activePreset = {};
   if (!value || value == "examples") {
@@ -820,23 +826,22 @@ function clearInput(el) {
 </h2>
 
 <p>
-Explore reasoning when information is uncertain, sources disagree, or
-general rules have exceptions. Facts and rules may carry numeric confidences,
-and the solver evaluates positive and negative support for each conclusion.
+Explore reasoning with uncertain or conflicting information and rules with
+exceptions. Facts and rules may carry confidence values; the solver reports
+support for and against each answer and shows the proofs behind it.
 </p>
-<p>
-Start with an example: selecting one loads the problem together with a
-short explanation. You can modify it or enter your own problem, then press
-<i>Solve</i> to see the answer and the proof behind it.
+<p id="startNote">
+Choose an example to load a problem and a short explanation. Edit it if
+needed, then press <i>Solve</i> to see the answer and its proofs.
 </p>
 <p class="modelinks">
-More about this:
-<a href="#whatModal" data-toggle="modal">how it works</a> &middot;
-<a href="#outputModal" data-toggle="modal">reading the output</a> &middot;
-<a href="#confModal" data-toggle="modal">confidence and support</a> &middot;
-<a href="#defaultsModal" data-toggle="modal">defaults</a> &middot;
-<a href="#samplingModal" data-toggle="modal">checking by sampling</a> &middot;
-<a href="#" onclick="gid('syntax').style.display='block'; document.location='#syntax'; return false;">help</a>
+Learn more:
+<a href="#whatModal" data-toggle="modal">How it works</a> &middot;
+<a href="#outputModal" data-toggle="modal">Reading results</a> &middot;
+<a href="#confModal" data-toggle="modal">Confidence and support</a> &middot;
+<a href="#defaultsModal" data-toggle="modal">Defaults</a> &middot;
+<a href="#samplingModal" data-toggle="modal">Sampling checks</a> &middot;
+<a href="#" onclick="gid('syntax').style.display='block'; document.location='#syntax'; return false;">Help</a>
 </p>
 
 <div id="input_notes"></div>
