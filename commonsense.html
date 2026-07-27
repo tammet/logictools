@@ -129,6 +129,7 @@ var gkWorker = null;          // the worker running the current/last solve
 //   seconds:"30"     -> set the time limit
 //   maxanswers:"1"   -> set the max-answers field
 //   confidence:"0.1" -> set the confidence-limit field
+//   blockerconfidence:"0.5" -> set the exception-limit field
 //   background:true  -> load the shared knowledge base gk_axioms_std.js
 //   taxonomy:true    -> run with -defaults and load the gzipped WordNet
 //                       taxonomy files (gk_name_number.txt, gk_taxonomy_packed.txt)
@@ -164,6 +165,8 @@ function buildArgs() {
   if (!isNaN(ma)) args.push("-maxanswers", "" + ma);
   var cf = gid("confidence").value;
   if (cf !== "" && !isNaN(parseFloat(cf))) args.push("-confidence", "" + parseFloat(cf));
+  var bc = gid("blockerconfidence").value;
+  if (bc !== "" && !isNaN(parseFloat(bc))) args.push("-blockerconfidence", "" + parseFloat(bc));
   var st = gid("strategy").value;
   if (st && st.trim()) args.push("-strategytext", st.trim());
   return args;
@@ -178,7 +181,9 @@ function solveWith(input, args, kb) {
     return;
   }
   if (gkWorker) { gkWorker.terminate(); gkWorker = null; }
-  var w = new Worker("gkworker.js");
+  // The version query defeats a cached older worker; gkworker.js carries the
+  // same version onto its gkjs.js and gkjs.wasm requests (GK_BUILD there).
+  var w = new Worker("gkworker.js?v=1.0.7");
   gkWorker = w;
   w.onmessage = function (ev) {
     var out = (ev.data && ev.data.output) ? ev.data.output : "";
@@ -704,13 +709,15 @@ function mcMethodChanged() {
   }
 }
 
-// the defaults shown in the fields: gk's own -confidence default, and the
-// distinct-answer count its answer-collection limit stops at
+// the defaults shown in the fields: gk's own -confidence and
+// -blockerconfidence defaults, and the distinct-answer count its
+// answer-collection limit stops at
 function resetAdvanced() {
   gid("seconds").value = "5";
   gid("detail").checked = false;
   gid("maxanswers").value = "10";
   gid("confidence").value = "0.1";
+  gid("blockerconfidence").value = "0.5";
   gid("strategy").value = "";
   gid("mc_method").value = "subtract";
   gid("mc_trials").value = "1000";
@@ -723,6 +730,7 @@ function applyPreset(p) {
   if (p.detail) gid("detail").checked = true;
   if (p.maxanswers) gid("maxanswers").value = p.maxanswers;
   if (p.confidence) gid("confidence").value = p.confidence;
+  if (p.blockerconfidence) gid("blockerconfidence").value = p.blockerconfidence;
   if (p.strategy) gid("strategy").value = p.strategy;
   if (Object.keys(p).length) gid("advanced_buttons").style.display = "block";
 }
@@ -931,6 +939,14 @@ query(flies(X)).</textarea>
           <div style="display: inline-block; width: 105px; text-align: center;">confidence&nbsp;limit</div>
           <input type="text" class="form-control" id="confidence" value="0.1" style="width: 55px"
                  aria-label="confidence limit: the minimum verdict confidence"></input>
+          <div style="display: inline-block; width: 100px; text-align: center;">exception&nbsp;limit</div>
+          <input type="text" class="form-control" id="blockerconfidence" value="0.5" style="width: 55px"
+                 aria-label="exception limit: the minimum confidence an exception proof needs to block a default"></input>
+          <a href="#advancedModal" data-toggle="modal" class="qlink">
+            <button type="button" class="btn btn-default" style="
+             width: 30px; height: 30px; text-align: center; padding: 6px 0;  font-size: 12px;
+             line-height: 1.42; border-radius: 15px;
+             background-color: #cccccc; color: #337ab7; margin-left: 12px;">?</button></a>
           <div style="padding-top: 15px;">
             <div style="display: inline-block; width: 62px; text-align: center;">sampling</div>
             <select class="form-control" style="width: 160px;" id="mc_method"
@@ -1004,9 +1020,11 @@ below. Then edit the problem, or clear the box and write your own.
 detailed report (a four-component breakdown of the evidence for each
 answer), a cap on the number of answers, the confidence limit &mdash; the
 minimum verdict confidence an answer needs, the absolute difference between
-its positive and negative support &mdash; a
+its positive and negative support &mdash; the exception limit &mdash; the
+minimum confidence an exception proof needs to block a default &mdash; a
 sampling check that re-estimates reported values by simulation, and a
-search-strategy field.</p>
+search-strategy field. The <b>?</b> button next to the fields explains
+each of them.</p>
 
 <h4>Syntax in brief</h4>
 <p>Statements end with a period. <code>%</code> starts a line comment,
@@ -1419,6 +1437,49 @@ limits are described in the
 <a href="https://github.com/tammet/gkreasoner/tree/master/montecarlo">montecarlo
 directory</a> of the gkreasoner repository; the estimates are repeatable
 &mdash; the same input and world count give the same sampled worlds.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= the advanced-controls modal ================= -->
+
+<div class="modal fade" id="advancedModal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content modal_login">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal">
+            <span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+            <h4 class="modal-title" style="color: black;">The advanced controls</h4>
+      </div>
+      <div class="modal-body">
+<p><b>seconds</b> is the time limit for the whole search. When it runs
+out, the results found so far are reported; a hard example (planning, a
+large knowledge base) may need more than the default 5.</p>
+<p><b>detailed report</b> adds a four-component breakdown for each answer
+&mdash; positive support, negative support, conflict and ignorance &mdash;
+together with the proof found for the negation, notes on contested
+premises, and the exact rule instances used. Without it only the answer,
+its signed confidence and its proof are shown.</p>
+<p><b>max answers</b> caps how many distinct answers an open question
+collects before the search stops. Raise it when a question has many
+values; lower it to 1 to stop at the first answer found.</p>
+<p><b>confidence limit</b> is the minimum verdict confidence an answer
+needs: the absolute difference between its positive and negative support.
+An answer whose proof exists but whose confidence stays under the limit is
+reported as <code>evidence below limit</code>. The default 0.1 discards
+near-ties between support and counter-support.</p>
+<p><b>exception limit</b> is the acceptance threshold for an exception in
+a default rule: an <code>unless</code> condition blocks or discounts its
+rule only when the exception is established with at least this confidence.
+The default 0.5 means an exception must be more likely than not. Evidence
+below the limit is ignored entirely, so an answer can change abruptly when
+pooled exception evidence crosses it; lowering the limit lets weaker
+exceptions count.</p>
+<p>The text field below the sampling row takes a search strategy as JSON
+and overrides the automatic strategy choice; the options are described in
+the <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/strategy_reference.md">strategy
+reference</a>.</p>
       </div>
     </div>
   </div>
