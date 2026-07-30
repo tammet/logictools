@@ -299,7 +299,7 @@ function mcTeardown() {
 // cached copy of an older sampler would answer with an older model: the
 // version below is raised whenever mcsampler.js changes in a way that
 // changes its numbers
-var MC_SAMPLER_VERSION = "2";
+var MC_SAMPLER_VERSION = "3";
 
 function mcSpawn(idx) {
   var w = new Worker("mcsampler.js?v=" + MC_SAMPLER_VERSION);

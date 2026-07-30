@@ -18,6 +18,16 @@
 // to be an independent check, and it is expected to differ from gk on some
 // examples. Inclusion estimates are compared by interval overlap, the four
 // masses by absolute difference.
+//
+// Coverage limit worth knowing (2026-07-30): only the examples with a GROUND
+// query carry four-mass expectations, because shared-threshold sampling needs
+// a question without variables. The default, exception, penguin and Nixon
+// examples all ask open questions, so no reference case here exercises the
+// priority handling of the shared-threshold model. A port error in exactly
+// that code went unnoticed until it was found by comparing mcsampler.js
+// against threshold_worlds.py function by function. Until an example with a
+// ground query and a default is added to the page, that comparison -- not
+// this harness -- is what covers the priority paths.
 
 var fs = require("fs");
 var path = require("path");

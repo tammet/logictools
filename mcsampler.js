@@ -37,6 +37,18 @@
 //     constants; the page's shared-threshold panel shows a single table, so an
 //     open query is reported as unsupported here instead.
 //
+// Last synchronised with the Python reference on 2026-07-30, when the
+// priority-0 layer of _net and the cycle/external pool split of _pools
+// (both added there 2026-07-27) were ported. Before that the port fell
+// through to ordinary opposition for a priority-0 default, which reported a
+// conflict component where the reference reports an exclusive split: on a
+// lone priority-0 default of strength .8 opposed by an ordinary contrary fact
+// of .6 it gave .32/.12/.48/.08 instead of .32/.60/0/.08. netOf and poolsOf
+// were checked against the Python functions point by point after the port
+// (324000 threshold/rank/pool combinations and 4702 contribution sets, no
+// difference). Raise MC_SAMPLER_VERSION in commonsense.html whenever a change
+// here moves the numbers, or cached copies keep answering with the old model.
+//
 // One module instance decides many worlds: gk frees its database when main
 // returns, and repeated callMain with IDENTICAL flags is safe. gk does not
 // reset all option globals between calls, so the order inside one instance
@@ -878,14 +890,30 @@ function present(t, state) {
   return true;
 }
 
+// Port of threshold_worlds._is_cycle_member: a contribution whose own
+// exception condition is the COMPLEMENT of its head (`p :- ..., unless(-p)`)
+// and carries no priority. Priority 0 means incomparable, so such a condition
+// makes no claim that ranks can settle: the two exception edges of a
+// same-atom pair are the internal edges of a cycle. A condition EQUAL to the
+// head (`p :- ..., unless(p)`) is the self-defeating form, not this one.
+function isCycleMember(t) {
+  for (var i = 0; i < t.mutual.length; i++)
+    if (t.mutual[i].prio < 1 && t.mutual[i].sign === complement(t.headSign))
+      return true;
+  return false;
+}
+
 // Port of threshold_worlds._pools: pooled positive/negative strengths of the
-// PRESENT rule-instance contributions, the paired-exception residual fill,
-// and each polarity's mutual-block rank. A polarity's rank is the maximum
-// mutual-block rank of its present contributions when every contribution in
-// that polarity comes from a ranked default. It is 0 when any present
-// contribution is unranked, and -1 when there is no present contribution.
+// PRESENT rule-instance contributions, the same pools split into reciprocal
+// priority-0 cycle members and external evidence, the paired-exception
+// residual fill, and each polarity's mutual-block rank. A polarity's rank is
+// the maximum mutual-block rank of its present contributions when every
+// contribution in that polarity comes from a ranked default. It is 0 when any
+// present contribution is unranked, and -1 when there is no present
+// contribution.
 function poolsOf(ts, state) {
   var pro = [], con = [], filled = false, rankPro = -1, rankCon = -1, i, j;
+  var proCyc = [], conCyc = [], proExt = [], conExt = [];
   var mainProBlocked = false;
   for (i = 0; i < ts.length; i++)
     if (ts[i].headSign === "+" && ts[i].blockers.length && !present(ts[i], state))
@@ -896,21 +924,27 @@ function poolsOf(ts, state) {
     var trank = 0;
     for (j = 0; j < t.mutual.length; j++)
       trank = Math.max(trank, t.mutual[j].prio);
+    var cyc = isCycleMember(t);
     if (t.headSign === "+") {
       pro.push(t.strength);
+      (cyc ? proCyc : proExt).push(t.strength);
       rankPro = (trank < 1 || rankPro === 0) ? 0 : Math.max(rankPro, trank);
     } else {
       con.push(t.strength);
+      (cyc ? conCyc : conExt).push(t.strength);
       rankCon = (trank < 1 || rankCon === 0) ? 0 : Math.max(rankCon, trank);
       if (t.pairedMain && mainProBlocked) filled = true;
     }
   }
-  var a = 1.0, b = 1.0;
-  for (i = 0; i < pro.length; i++) a *= (1 - pro[i]);
-  a = 1 - a;
-  for (i = 0; i < con.length; i++) b *= (1 - con[i]);
-  b = 1 - b;
-  return { a: a, b: b, filled: filled, rankPro: rankPro, rankCon: rankCon };
+  function pool(ws) {
+    var r = 1.0;
+    for (var k = 0; k < ws.length; k++) r *= (1 - ws[k]);
+    return 1 - r;
+  }
+  return { a: pool(pro), b: pool(con),
+           aCyc: pool(proCyc), bCyc: pool(conCyc),
+           aExt: pool(proExt), bExt: pool(conExt),
+           filled: filled, rankPro: rankPro, rankCon: rankCon };
 }
 
 // Port of threshold_worlds._net: (pro_usable, con_usable, conflict) for one
@@ -925,6 +959,7 @@ function poolsOf(ts, state) {
 //   default opposed by ordinary evidence -> exclusive outcome regions: the
 //     ordinary polarity fires on its threshold, and the default survives only
 //     where the ordinary evidence misses; no conflict component.
+//   reciprocal priority-0 defaults -> the priority-0 layer below.
 //
 // The independent second threshold is what makes for = a(1-b) a product; a
 // single shared threshold cannot express it.
@@ -951,6 +986,28 @@ function netOf(p, u2) {
     // mirror: the refuting side is the gated one
     var fp1 = ul <= p.a;
     return { pro: fp1, con: (ur <= p.b) && !fp1, conflict: false };
+  }
+  if (p.aCyc > 0 || p.bCyc > 0) {
+    // Port of the priority-0 layer of threshold_worlds._net (2026-07-27).
+    // Priority 0 is incomparable, not the lowest rank, so a reciprocal
+    // priority-0 pair cannot be settled by the ranked branches above. The
+    // internal edges of the cycle are dependencies, not attacks: the cycle
+    // pools meet by ordinary opposition on their own threshold. Evidence from
+    // OUTSIDE the cycle keeps attacking -- it suppresses the cycle side it
+    // opposes exactly where it is itself usable -- which is what makes a lone
+    // priority-0 default against an ordinary contrary fact keep the exclusive
+    // split a(1-b) / b / 0 instead of becoming an opposition.
+    var ae = p.aExt, be = p.bExt;
+    var extPro = (be < ul && ul <= ae);
+    var extCon = (ae < ul && ul <= be);
+    var extCfl = (ul <= Math.min(ae, be));
+    var cycPro = (p.bCyc < ur && ur <= p.aCyc);
+    var cycCon = (p.aCyc < ur && ur <= p.bCyc);
+    var cycCfl = (ur <= Math.min(p.aCyc, p.bCyc));
+    var pro0 = extPro || (cycPro && !extCon);
+    var con0 = extCon || (cycCon && !extPro);
+    return { pro: pro0, con: con0,
+             conflict: (!pro0 && !con0) && (extCfl || cycCfl) };
   }
   var pro = (p.b < ul && ul <= p.a);
   var con = (p.a < ul && ul <= p.b);
