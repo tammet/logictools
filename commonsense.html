@@ -183,7 +183,7 @@ function solveWith(input, args, kb) {
   if (gkWorker) { gkWorker.terminate(); gkWorker = null; }
   // The version query defeats a cached older worker; gkworker.js carries the
   // same version onto its gkjs.js and gkjs.wasm requests (GK_BUILD there).
-  var w = new Worker("gkworker.js?v=1.0.8");
+  var w = new Worker("gkworker.js?v=1.0.9");
   gkWorker = w;
   w.onmessage = function (ev) {
     var out = (ev.data && ev.data.output) ? ev.data.output : "";
