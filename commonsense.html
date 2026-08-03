@@ -140,8 +140,8 @@ var examplePresets = {
   "13": { strategy: '{"strategy":["unit"],"query_preference":0,"arith_instantiation":1}' },
   "15": { detail: true },
   "20": { seconds: "30", maxanswers: "1" },
-  "21": { strategy: '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}', confidence: "0.1", background: true },
-  "22": { strategy: '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}', confidence: "0.1", background: true },
+  "21": { strategy: '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}', confidence: "0.1", background: true, taxonomy: true },
+  "22": { strategy: '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}', confidence: "0.1", background: true, taxonomy: true },
   "23": { taxonomy: true }
 };
 
@@ -183,7 +183,7 @@ function solveWith(input, args, kb) {
   if (gkWorker) { gkWorker.terminate(); gkWorker = null; }
   // The version query defeats a cached older worker; gkworker.js carries the
   // same version onto its gkjs.js and gkjs.wasm requests (GK_BUILD there).
-  var w = new Worker("gkworker.js?v=1.0.9");
+  var w = new Worker("gkworker.js?v=1.0.10");
   gkWorker = w;
   w.onmessage = function (ev) {
     var out = (ev.data && ev.data.output) ? ev.data.output : "";
@@ -244,7 +244,18 @@ function useGk(el) {
   if (activePreset && activePreset.background) {
     showResult("loading background knowledge...");
     ensureKB(
-      function (kb) { solveWith(input, ["axioms_std.js", "input"].concat(flags), kb); },
+      function (kb) {
+        if (activePreset.taxonomy) {
+          // gk 1.0.10: the generated language rules carry taxonomy-form
+          // priorities, which require the taxonomy tables
+          ensureTax(
+            function (tax) { solveWith(input, ["axioms_std.js", "input", "-defaults"].concat(flags), kb, tax); },
+            function (err) { showResult("could not load the taxonomy files: " + err); }
+          );
+        } else {
+          solveWith(input, ["axioms_std.js", "input"].concat(flags), kb);
+        }
+      },
       function (err) { showResult("could not load background knowledge (gk_axioms_std.js): " + err); }
     );
   } else if (activePreset && activePreset.taxonomy) {

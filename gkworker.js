@@ -17,7 +17,7 @@ var ready = false;
 // fetched under the build version: the loader below carries it in its own
 // URL, locateFile puts it on the .wasm request the loader makes. Raise it
 // whenever gkjs.js/gkjs.wasm are replaced.
-var GK_BUILD = "1.0.9";
+var GK_BUILD = "1.0.10";
 
 var Module = {
   noInitialRun: true,
