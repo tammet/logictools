@@ -244,12 +244,16 @@ function jsonAt(text, i) {
   return null;
 }
 
-// One row of the answer table: the answer, its four shares and the signed
-// confidence (for minus against).
-function shareRow(answer, v) {
-  var cells = "<td>" + esc(answer) + "</td>";
-  for (var i = 0; i < 4; i++) cells += '<td style="text-align: right;">' + share(v[i]) + "</td>";
-  cells += '<td style="text-align: right;">' + share(v[0] - v[1]) + "</td>";
+// One row of the answer table: the answer, its signed confidence (for minus
+// against), the main number of the answer, and then, set apart, its four
+// shares.
+var SHARE_TD = 'style="text-align: right; color: #666;"';
+var SHARE_TD1 = 'style="text-align: right; color: #666; border-left: 2px solid #ddd; padding-left: 14px;"';
+function shareRow(answer, v, signed) {
+  if (signed === undefined || signed === null) signed = v[0] - v[1];
+  var cells = "<td>" + esc(answer) + "</td>" +
+              '<td style="text-align: right; font-weight: bold; padding-right: 14px;">' + share(signed) + "</td>";
+  for (var i = 0; i < 4; i++) cells += "<td " + (i ? SHARE_TD : SHARE_TD1) + ">" + share(v[i]) + "</td>";
   return "<tr>" + cells + "</tr>";
 }
 
@@ -354,9 +358,12 @@ function showGkOutput(out) {
   var r = line.recursive;
   lastGk = r;
   var h = "";
+  var sh = 'style="text-align: right; font-weight: normal; color: #666;"';
   var head = '<table class="table table-condensed" style="width: auto;"><tr><th>answer</th>' +
-             '<th>for</th><th>against</th><th>conflict</th><th>ignorance</th>' +
-             '<th>signed</th></tr>';
+             '<th style="text-align: right; padding-right: 14px;">signed confidence</th>' +
+             '<th style="text-align: right; font-weight: normal; color: #666; border-left: 2px solid #ddd; ' +
+             'padding-left: 14px;">for</th><th ' + sh + '>against</th><th ' + sh + '>conflict</th><th ' +
+             sh + '>ignorance</th></tr>';
   // a question that the input defines through $defq clauses (as the English
   // examples do) is named by gk after that definition
   // (since gk 1.2.5 the line writes literals in JSON form, ["flies","tweety"];
@@ -364,12 +371,13 @@ function showGkOutput(out) {
   var qtext = GkProofs.litText(r.question);
   var qname = (!qtext || /^\$defq/.test(qtext)) ? "the question" : qtext;
   if (r.value) {
-    h += head + shareRow(qname, r.value) + "</table>";
+    h += head + shareRow(qname, r.value, r.signed_confidence) + "</table>";
     h += proofsHtml(qname, r.proof);
   } else if (r.answers && r.answers.length) {
     h += head;
     for (var k = 0; k < r.answers.length; k++)
-      h += shareRow(GkProofs.litText(r.answers[k].answer), r.answers[k].value);
+      h += shareRow(GkProofs.litText(r.answers[k].answer), r.answers[k].value,
+                    r.answers[k].signed_confidence);
     h += "</table>";
     for (k = 0; k < r.answers.length; k++)
       h += proofsHtml(GkProofs.litText(r.answers[k].answer), r.answers[k].proof);
@@ -1445,9 +1453,10 @@ reference:
 <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/input_languages.md">input languages</a>.</p>
 
 <h4>Understanding results and proofs</h4>
-<p>The result is a table with one row per answer: the support for it, the
-support against it, conflict and ignorance, which sum to 1, and the signed
-confidence, the support for minus the support against. A question with a
+<p>The result is a table with one row per answer. Its main number is the
+signed confidence, the support for the answer minus the support against it.
+Then come the four shares of which it is made: the support for it, the
+support against it, conflict and ignorance, which sum to 1. A question with a
 variable gets one row per answer that gk's proofs found. A share of 0 for a
 statement does not make it false: false needs support for its explicit
 negation. Below the table, <i>readings</i> name the approximations that gk
@@ -1566,8 +1575,10 @@ on examples.</p>
             <h4 class="modal-title" style="color: black;">Reading the output</h4>
       </div>
       <div class="modal-body">
-<p>The result table has one row per answer: the answer and its four
-shares, which sum to 1.</p>
+<p>The result table has one row per answer. Its main number is the
+<b>signed confidence</b>: the support for the statement minus the support
+against it, from &minus;1 to 1. Then, set apart, come the four shares of
+which it is made; they sum to 1.</p>
 <ul>
 <li><b>for</b>: the share in which the statement is established and can be
 used in further reasoning;</li>
@@ -1576,8 +1587,9 @@ used in further reasoning;</li>
 used;</li>
 <li><b>ignorance</b>: nothing is established either way.</li>
 </ul>
-<p><b>signed</b> is the support for minus the support against. A question
-with a variable gets one row per answer that gk's proofs found; an instance
+<p>A signed confidence of 0 can mean ignorance or balanced evidence; the
+four shares tell the two apart. A question with a variable gets one row per
+answer that gk's proofs found; an instance
 without a proof is not listed. A share of 0 for a statement does not make
 it false: false needs support for its negation.</p>
 <p><b>readings</b> name the approximations and conventions that gk applied
