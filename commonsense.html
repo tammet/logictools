@@ -335,7 +335,7 @@ function proofsHtml(name, proof) {
   var parts = [];
   if (n("for")) parts.push(n("for") + " for");
   if (n("against")) parts.push(n("against") + " against");
-  if (n("guards")) parts.push(n("guards") + " of guards");
+  if (n("guards")) parts.push(n("guards") + (n("guards") === 1 ? " guard" : " guards"));
   if (!parts.length) return "";
   var lines = GkProofs.answerProofLines(proof, 0);
   // open: the proofs are part of the answer; the triangle folds them away
@@ -1857,14 +1857,21 @@ flies(X)  :- bird(X),   unless(-flies(X)).
 
 query(flies(X)).</code></pre>
 <div id="example_cs1_proof_notes">
-<p>gk lists two answers. Each row gives four shares that sum to 1:
-<i>for</i>, <i>against</i>, <i>conflict</i> and <i>ignorance</i>. The last
-column, <i>signed</i>, is for minus against.</p>
+<p>gk lists two answers. The first number of each row, the <i>signed
+confidence</i>, is the answer's main number: the support for it minus the
+support against it. Then come the four shares that it is made of, which sum
+to 1: <i>for</i>, <i>against</i>, <i>conflict</i> and <i>ignorance</i>.</p>
 <p><code>flies(tweety)</code> is (1, 0, 0, 0): the default applies, and
 nothing speaks against flying. <code>flies(pingu)</code> is (0, 1, 0, 0): the
 strict penguin rule establishes <code>-flies(pingu)</code>. The default says
 "unless the contrary is established", so it yields: the answer is against,
 with no conflict.</p>
+<p>Under the table are the proofs of each answer. The proof for
+<code>flies(pingu)</code> ends with the open exception
+<code>unless(-flies(pingu))</code>: it holds only where
+<code>-flies(pingu)</code> is not established. The proof against
+establishes exactly that, so the value is (0, 1, 0, 0) although both
+proofs are listed.</p>
 <p>gk starts from a proof and then checks it. The <i>search</i> line counts
 the nested searches: for opposition to each conclusion, for further support
 and opposition at each condition, and for each exception. The <i>raw
@@ -1927,14 +1934,14 @@ query(flies(tweety)).
 % confidence 0.7 for flying, 0.4 for not flying.</code></pre>
 <div id="example_cs4_proof_notes">
 <p>The answer is (0.3, 0, 0.4, 0.3): for 0.3, conflict 0.4, ignorance 0.3.
-The signed value is 0.3.</p>
+The signed confidence is 0.3.</p>
 <p>The support semantics draws one number between 0 and 1 for the atom
 <code>flies(tweety)</code>. The support for flying passes when the number is
 below 0.7, the support against when it is below 0.4. Below 0.4 both pass:
 conflict, 0.4 of the worlds. Between 0.4 and 0.7 only flying passes: for,
 0.3. Above 0.7 neither passes: ignorance, 0.3 (<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">the support semantics</a>, Section
 4).</p>
-<p>Conflict and ignorance both give a signed value near 0, but they mean
+<p>Conflict and ignorance both give a signed confidence near 0, but they mean
 different things: conflict is evidence on both sides, ignorance is no
 evidence.</p></div>
 
@@ -2028,7 +2035,10 @@ without conflict, 0.3 of the worlds, and there it supports flying with
 strength 0.9: <code>0.3 * 0.9 = 0.27</code>. The evidence against the bird
 premise is no evidence against flying, so against stays 0.</p>
 <p>gk finds the opposing premise evidence by itself: after the proof of
-flying, it searches for opposition to each condition of the proof.</p>
+flying, it searches for opposition to each condition of the proof. The
+proof under the table has the confidence 0.45, 0.5 * 0.9: a proof does
+not see the evidence against its premise. The value does, so it is
+0.27.</p>
 <p>This example shows two quantities apart. Press <i>Sample</i> under
 Advanced. The default, the support semantics, gives about 0.27. Switch the
 sampling menu to <i>clause activation</i>: each world keeps every uncertain
@@ -2081,7 +2091,7 @@ query(flies(X)).
 <code>flies(tweety)</code> is (0.1, 0.9, 0, 0): where the evidence against
 flying passes (0.9 of the worlds), the default yields and the answer is
 against. Where it fails (0.1), the default applies and supports flying. The
-signed value is <code>0.1 - 0.9 = -0.8</code>. There is no conflict: a
+signed confidence is <code>0.1 - 0.9 = -0.8</code>. There is no conflict: a
 default yields to its exception instead of fighting it (<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">the support semantics</a>,
 Section 6).</p>
 <p>Change <code>0.9</code> to <code>1</code>: with a certain exception the
@@ -2139,6 +2149,12 @@ query(dislikeswar(X)).
 Both defaults apply, and neither has the higher rank, so neither wins:
 <code>pacifist(nixon)</code> is not established either way, and its
 consequence has no support (<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">the support semantics</a>, Section 6).</p>
+<p>The proofs show both defaults. The proof for
+<code>dislikeswar(nixon)</code> goes through the quaker default and leaves
+its exception <code>unless(-pacifist(nixon), 2)</code> open. The
+<i>guard</i> proof below it is a proof of that exception: the republican
+default establishes <code>-pacifist(nixon)</code> with the same rank, so
+the two block each other.</p>
 <p>Raise the quaker default to rank 3: pacifism wins, and
 <code>dislikeswar(nixon)</code> becomes (1, 0, 0, 0).</p></div>
 
@@ -2276,7 +2292,9 @@ it lists the evidence gk collected.</p></div>
 example 4 the premise is in conflict in 0.7 of the worlds and established
 in 0.28. The flying clause gives <code>0.28 * 0.9 = 0.252</code>. Not flying
 would need <code>-bird(tweety)</code> established without conflict, which
-never happens, so against is 0.</p>
+never happens, so against is 0. The four proofs for flying have higher
+confidences (0.81 and less): each is one route, and none sees the doubt
+about the premise, which only the value counts.</p>
 <p>The table of evidence lists the applications: one use of one input
 clause each. A row <code>$src_e5(tweety)</code> is a <i>source event</i>:
 the clause <code>only_birds_fly</code> is used in two directions,
@@ -2372,7 +2390,12 @@ itself, and the no-fly clause read backwards turns flying into evidence
 against the penguin fact. So the evidence forms loops through the default
 and across signs. gk evaluates such loops with a <i>cycle cut</i>: walking
 from the question, it removes the application that leads back. Here the cut
-removes the flying default's support, and against becomes 0.</p>
+removes the flying default's support, and against becomes 0. The proof
+<i>against #1</i> under the table is that route: it derives
+<code>flies(p)</code> from the penguin fact (0.8) through the flying
+default and leaves the default's exception
+<code>unless(-flies(p), 2)</code> open, the question itself. It is listed,
+but after the cut it adds nothing to the value.</p>
 <p>Press <i>Sample</i> under Advanced to see the difference: the reference
 tool computes the support semantics by sampling worlds and shows both
 values side by side (<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/mcref.md">the reference tool</a>).</p>
