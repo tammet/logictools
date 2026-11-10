@@ -105,6 +105,7 @@ pre code {
 .modelinks a { margin: 0 4px; }
 </style>
 <script src="https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js"></script>
+<script src="gkproofs.js?v=1.2.5"></script>
 <script>
   WebFont.load({
     google: {
@@ -124,6 +125,7 @@ var gkWorker = null;          // the worker running the current/last solve
 
 // Per-example presets applied when an example is picked. Keys are the option
 // values of the two example menus.
+//   method:"direct"  -> run the direct method of gk 1.1.2 (default: recursive)
 //   detail:true      -> switch the detailed report on
 //   strategy:"..."   -> prefill the strategy field
 //   seconds:"30"     -> set the time limit
@@ -134,14 +136,16 @@ var gkWorker = null;          // the worker running the current/last solve
 //   taxonomy:true    -> run with -defaults and load the gzipped WordNet
 //                       taxonomy files (gk_name_number.txt, gk_taxonomy_packed.txt)
 var examplePresets = {
-  "4":  { detail: true },
-  "7":  { detail: true },
-  "11": { detail: true },
   "13": { strategy: '{"strategy":["unit"],"query_preference":0,"arith_instantiation":1}' },
   "15": { detail: true },
+  // 20: gk's first proof search gets a quarter of the budget and needs
+  // several seconds of it to find the plan; at 20 seconds it does not
   "20": { seconds: "30", maxanswers: "1" },
   "21": { strategy: '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}', confidence: "0.1", background: true, taxonomy: true },
-  "22": { strategy: '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}', confidence: "0.1", background: true, taxonomy: true },
+  // 22: in the browser build the base search needs more than a quarter of a
+  // 5-second budget to find the which-answer; at 8 seconds it finds it
+  // (5.8 s in wasm under node), 10 leaves a margin for slower machines
+  "22": { seconds: "10", strategy: '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}', confidence: "0.1", background: true, taxonomy: true },
   "23": { taxonomy: true }
 };
 
@@ -154,22 +158,233 @@ function showEmptyResult() { gid("result").innerHTML = RESULT_EMPTY; }
 
 // ---- running gk ---------------------------------------------------------
 
+// The method of the solve: "recursive" (gk's default since 1.2.0) or
+// "direct" (the direct method of gk 1.1.2, option -direct).
+function currentMethod() {
+  var m = gid("method");
+  return (m && m.value === "direct") ? "direct" : "recursive";
+}
+
+// The exception limit is an option of the direct method only: in gk 1.2.x
+// -blockerconfidence, like -detail, selects the direct method by itself.
+// So the field is enabled only when the direct method is chosen. The
+// confidence limit is read only by the direct method's report (gk's
+// report.c), so it is enabled and passed only under the direct method.
+function methodChanged() {
+  var direct = currentMethod() === "direct";
+  gid("blockerconfidence").disabled = !direct;
+  gid("blockerconfidence_label").style.opacity = direct ? "1" : "0.5";
+  // the confidence limit too: only the direct method's report reads it
+  gid("confidence").disabled = !direct;
+  gid("confidence_label").style.opacity = direct ? "1" : "0.5";
+  // full proofs (-fullproof) belong to the recursive method's proofs
+  gid("fullproof").disabled = direct;
+  gid("fullproof_label").style.opacity = direct ? "0.5" : "1";
+}
+
 // Read the Advanced controls into a gk argument list (without the input file
 // names). Never adds -parallel: the WebAssembly build runs single-process.
-function buildArgs() {
+// Under the recursive method the detailed report is drawn from the dump that
+// gk prints anyway, so -detail is passed only to the direct method.
+function buildArgs(methodOverride) {
   var args = [];
+  var direct = (methodOverride || currentMethod()) === "direct";
+  if (direct) args.push("-direct");
   var secs = parseInt(gid("seconds").value, 10); if (isNaN(secs)) secs = 5;
   args.push("-seconds", "" + secs);
-  if (gid("detail").checked) args.push("-detail");
+  if (direct && gid("detail").checked) args.push("-detail");
+  if (!direct && gid("fullproof").checked) args.push("-fullproof");
   var ma = parseInt(gid("maxanswers").value, 10);
   if (!isNaN(ma)) args.push("-maxanswers", "" + ma);
-  var cf = gid("confidence").value;
-  if (cf !== "" && !isNaN(parseFloat(cf))) args.push("-confidence", "" + parseFloat(cf));
-  var bc = gid("blockerconfidence").value;
-  if (bc !== "" && !isNaN(parseFloat(bc))) args.push("-blockerconfidence", "" + parseFloat(bc));
+  if (direct) {
+    var cf = gid("confidence").value;
+    if (cf !== "" && !isNaN(parseFloat(cf))) args.push("-confidence", "" + parseFloat(cf));
+    var bc = gid("blockerconfidence").value;
+    if (bc !== "" && !isNaN(parseFloat(bc))) args.push("-blockerconfidence", "" + parseFloat(bc));
+  }
   var st = gid("strategy").value;
   if (st && st.trim()) args.push("-strategytext", st.trim());
   return args;
+}
+
+// ---- showing gk's answer ---------------------------------------------------
+
+var lastGk = null;            // the parsed recursive line of the last solve
+
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// A share as gk prints it, shortened to at most four decimals.
+function share(x) {
+  if (x === null || x === undefined || isNaN(x)) return "";
+  var r = Math.round(x * 10000) / 10000;
+  if (r === 0) return "0";
+  return String(r);
+}
+
+// The first JSON object of a text that starts at position i.
+function jsonAt(text, i) {
+  if (i < 0) return null;
+  var depth = 0, inStr = false, q = false;
+  for (var k = i; k < text.length; k++) {
+    var c = text[k];
+    if (inStr) {
+      if (q) q = false;
+      else if (c === "\\") q = true;
+      else if (c === '"') inStr = false;
+    } else if (c === '"') inStr = true;
+    else if (c === "{") depth++;
+    else if (c === "}") { depth--; if (depth === 0) {
+      try { return JSON.parse(text.slice(i, k + 1)); } catch (e) { return null; } } }
+  }
+  return null;
+}
+
+// One row of the answer table: the answer, its four shares and the signed
+// confidence (for minus against).
+function shareRow(answer, v) {
+  var cells = "<td>" + esc(answer) + "</td>";
+  for (var i = 0; i < 4; i++) cells += '<td style="text-align: right;">' + share(v[i]) + "</td>";
+  cells += '<td style="text-align: right;">' + share(v[0] - v[1]) + "</td>";
+  return "<tr>" + cells + "</tr>";
+}
+
+// The readings of the recursive line: the approximations and conventions gk
+// applied, grouped by name, each with its details in a list.
+function readingsHtml(r) {
+  var rd = r.readings || [];
+  if (!rd.length) return "";
+  var groups = {}, order = [];
+  for (var i = 0; i < rd.length; i++) {
+    var name = Array.isArray(rd[i]) ? rd[i][0] : String(rd[i]);
+    var det = Array.isArray(rd[i]) && rd[i].length > 1 ? rd[i].slice(1).join(" ") : "";
+    if (!groups[name]) { groups[name] = []; order.push(name); }
+    if (det) groups[name].push(det);
+  }
+  var h = "<p><b>readings</b> (approximations and conventions of gk that acted on the value):</p><ul>";
+  for (var j = 0; j < order.length; j++) {
+    var n = order[j], g = groups[n];
+    h += "<li>" + esc(n) + (g.length > 1 ? " &times; " + g.length : "");
+    if (g.length) {
+      h += "<details><summary>details</summary><ul>";
+      for (var k = 0; k < g.length; k++) h += "<li><code>" + esc(g[k]) + "</code></li>";
+      h += "</ul></details>";
+    }
+    h += "</li>";
+  }
+  return h + "</ul>";
+}
+
+// The search status of the recursive line.
+function statusHtml(r) {
+  var parts = [];
+  parts.push("nested searches: " + (r.tasks || 0) +
+             (r.tasks_cut ? ", " + r.tasks_cut + " cut by their time allowance" : "") +
+             (r.tasks_queued ? ", " + r.tasks_queued + " not reached" : ""));
+  if (r.applications !== undefined) parts.push("applications: " + r.applications);
+  if (r.pending_steps) parts.push("proof steps not turned into applications: " + r.pending_steps);
+  if (r.steps_not_represented) parts.push("proof applications: " + r.steps_not_represented);
+  if (r.value_from) parts.push("value from " + r.value_from);
+  if (r.budget_ms) parts.push("time used: " + Math.round(r.budget_used_ms || 0) + " of " +
+                              Math.round(r.budget_ms) + " ms");
+  var h = "<p><b>search</b>: " + esc(parts.join("; ")) + ".</p>";
+  if (r.stop) h += "<p>stop: " + esc(r.stop) + (r.search ? "; " + esc(r.search) : "") + ".</p>";
+  if (r.tasks_cut || r.tasks_queued)
+    h += "<p>Some searches did not finish, so the value may lack evidence they would have found.</p>";
+  return h;
+}
+
+// The applications of the dump, for the detailed report.
+function dumpHtml(d) {
+  if (!d) return "";
+  var apps = d.applications || [];
+  var h = "<details open><summary><b>the evidence gk collected</b> (" + apps.length +
+          " applications)</summary><table class=\"table table-condensed\" style=\"width: auto;\">" +
+          "<tr><th>head</th><th>body</th><th>exceptions</th><th>confidence</th><th>kind</th>" +
+          "<th>rank</th><th>origin</th></tr>";
+  for (var i = 0; i < apps.length; i++) {
+    var a = apps[i];
+    h += "<tr><td>" + esc(a.head || "") + "</td><td>" + esc((a.body || []).join(", ")) +
+         "</td><td>" + esc((a.exceptions || []).join(", ")) + "</td><td>" + esc(a.confidence) +
+         "</td><td>" + esc(a.kind || "") + "</td><td>" + esc(a.rank === undefined ? "" : a.rank) +
+         "</td><td>" + esc(a.origin || "") + "</td></tr>";
+  }
+  h += "</table>";
+  var sf = d.status_facts || {};
+  if ((sf.unfinished && sf.unfinished.length) || (sf.approximation && sf.approximation.length))
+    h += "<p>status facts:</p><pre>" + esc(JSON.stringify(sf, null, 1)) + "</pre>";
+  return h + "</details>";
+}
+
+// The proofs of one answer, behind an expander: the proofs for it, against
+// it and of the exceptions (guards) left in them, in gk's Prolog-like
+// notation (gkproofs.js). A proof shows its main structure; with full
+// proofs (-fullproof) the sub-proofs of the nested searches stand under
+// the steps whose searches found them.
+function proofsHtml(name, proof) {
+  if (!proof) return "";
+  var n = function (k) { return (proof[k] || []).length; };
+  var parts = [];
+  if (n("for")) parts.push(n("for") + " for");
+  if (n("against")) parts.push(n("against") + " against");
+  if (n("guards")) parts.push(n("guards") + " of guards");
+  if (!parts.length) return "";
+  var lines = GkProofs.answerProofLines(proof, 0);
+  return "<details><summary><b>proofs</b> of " + esc(name) + ": " + esc(parts.join(", ")) +
+         "</summary><pre>" + esc(lines.join("\n")) + "</pre></details>";
+}
+
+// Show what gk printed. The recursive method prints one line
+// {"recursive": ...} and then a dump; both are drawn as tables, with the raw
+// text behind an expander. Any other output (the direct method, an error
+// object, a boundary line) is shown as text.
+function showGkOutput(out) {
+  lastGk = null;
+  var i = out.indexOf('{"recursive"');
+  var line = jsonAt(out, i);
+  if (!line || !line.recursive) {
+    showResult(esc(out.trim() || "(no output)"));
+    return;
+  }
+  var r = line.recursive;
+  lastGk = r;
+  var h = "";
+  var head = '<table class="table table-condensed" style="width: auto;"><tr><th>answer</th>' +
+             '<th>for</th><th>against</th><th>conflict</th><th>ignorance</th>' +
+             '<th>signed</th></tr>';
+  // a question that the input defines through $defq clauses (as the English
+  // examples do) is named by gk after that definition
+  // (since gk 1.2.5 the line writes literals in JSON form, ["flies","tweety"];
+  // GkProofs.litText gives the text form flies(tweety))
+  var qtext = GkProofs.litText(r.question);
+  var qname = (!qtext || /^\$defq/.test(qtext)) ? "the question" : qtext;
+  if (r.value) {
+    h += head + shareRow(qname, r.value) + "</table>";
+    h += proofsHtml(qname, r.proof);
+  } else if (r.answers && r.answers.length) {
+    h += head;
+    for (var k = 0; k < r.answers.length; k++)
+      h += shareRow(GkProofs.litText(r.answers[k].answer), r.answers[k].value);
+    h += "</table>";
+    for (k = 0; k < r.answers.length; k++)
+      h += proofsHtml(GkProofs.litText(r.answers[k].answer), r.answers[k].proof);
+  } else {
+    h += "<p><b>no value</b>" + (r.unfinished ? ": " + esc([].concat(r.unfinished).join("; ")) : "") +
+         (r.stop ? " (" + esc(r.stop) + ")" : "") + "</p>";
+  }
+  h += readingsHtml(r) + statusHtml(r);
+  if (gid("detail").checked) {
+    var j = out.indexOf('{"@format":"gk_dump_v1"');
+    h += dumpHtml(jsonAt(out, j));
+  }
+  // the dump can run to megabytes on the larger examples: the raw view shows
+  // its first 50,000 characters
+  var raw = out.trim(), cap = 50000;
+  var rawNote = raw.length > cap ? "\n... (" + (raw.length - cap) + " more characters of the dump)" : "";
+  h += "<details><summary>raw output</summary><pre>" + esc(raw.slice(0, cap)) + esc(rawNote) +
+       "</pre></details>";
+  gid("result").innerHTML = h;
 }
 
 // A fresh worker per solve (see gkworker.js for why). The previous worker, if
@@ -183,11 +398,11 @@ function solveWith(input, args, kb) {
   if (gkWorker) { gkWorker.terminate(); gkWorker = null; }
   // The version query defeats a cached older worker; gkworker.js carries the
   // same version onto its gkjs.js and gkjs.wasm requests (GK_BUILD there).
-  var w = new Worker("gkworker.js?v=1.0.10");
+  var w = new Worker("gkworker.js?v=1.2.5");
   gkWorker = w;
   w.onmessage = function (ev) {
     var out = (ev.data && ev.data.output) ? ev.data.output : "";
-    showResult(out.trim() || "(no output)");
+    showGkOutput(out);
     if (w === gkWorker) { w.terminate(); gkWorker = null; }
   };
   w.onerror = function (e) {
@@ -273,6 +488,7 @@ function stopSolve(el) {
   var stopped = false;
   if (gkWorker) { gkWorker.terminate(); gkWorker = null; stopped = true; }
   if (mcRun || mcWorkers.length) { mcTeardown(); stopped = true; }
+  if (mcrefJob) { mcrefTeardown(); stopped = true; }
   if (stopped) showResult("stopped.");
 }
 
@@ -290,7 +506,6 @@ var mcRun = null;             // state of that run, null when none is going
 var MC_REFUSE_KB = "this example uses a large background knowledge base; " +
   "sampling is limited to small self-contained inputs. Pick one of the " +
   "confidence examples or write your own.";
-var MC_THRESHOLD_DRAWS = 100000;
 
 function mcWorkerCount() {
   var n = (typeof navigator !== "undefined" && navigator.hardwareConcurrency)
@@ -310,7 +525,7 @@ function mcTeardown() {
 // cached copy of an older sampler would answer with an older model: the
 // version below is raised whenever mcsampler.js changes in a way that
 // changes its numbers
-var MC_SAMPLER_VERSION = "3";
+var MC_SAMPLER_VERSION = "5";
 
 function mcSpawn(idx) {
   var w = new Worker("mcsampler.js?v=" + MC_SAMPLER_VERSION);
@@ -351,6 +566,7 @@ function useSampling(el) {
     showResult("sampling not run: " + mcEsc(MC_REFUSE_KB));
     return;
   }
+  if (gid("mc_method").value === "mcref") { mcrefStart(); return; }
   var secs = parseInt(gid("seconds").value, 10); if (isNaN(secs)) secs = 5;
   mcRun = {
     method: gid("mc_method").value,
@@ -387,7 +603,6 @@ function mcMessage(idx, msg) {
   if (msg.cmd === "setup") mcAfterSetup(msg);
   else if (msg.cmd === "trials") mcAfterTrials(idx, msg);
   else if (msg.cmd === "pair") mcAfterPair(idx, msg);
-  else if (msg.cmd === "threshold") mcRenderThreshold(msg);
 }
 
 function mcAfterSetup(s) {
@@ -396,12 +611,6 @@ function mcAfterSetup(s) {
     mcRun.notes.push(s.warnings[w]);
   // a large grounding means large worlds and a slow proof search per world
   mcRun.slow = (s.pool && s.pool.length > 2000);
-  if (mcRun.method === "threshold") {
-    mcWorkers[0].postMessage({ cmd: "threshold", pool: s.thresholdPool,
-      queryAtom: s.queryAtom, querySign: s.querySign,
-      trials: MC_THRESHOLD_DRAWS, seed: 0 });
-    return;
-  }
   mcRun.phase = "trials";
   mcRun.keys = new Array(mcRun.trials);
   var ranges = mcSplit(mcRun.trials);
@@ -547,6 +756,186 @@ function mcProgressText() {
   }
 }
 
+// ---- the reference tool mcref ----------------------------------------------
+// mcref.js is the JavaScript port of mcref 1.1.1, the reference tool of the
+// support semantics that gk's recursive method approximates (the gkreasoner
+// documentation, Doc/support_semantics.md and Doc/mcref.md). It grounds the
+// input over its constants and samples worlds; it shares no code with gk's
+// proof search. A run has three steps, each in a worker of its own:
+//   1. gk converts the input to JSON-LD-LOGIC (-writejson -recursive), as
+//      mcref.py does; a JSON input is passed through and read as written;
+//   2. gk computes its own value: the recursive method, the page's settings;
+//   3. mcref.js samples the worlds (seed 1) and reports the four shares.
+var MCREF_BUILD = "1.1.1-js";
+// the documentation of the public gk repository
+var GKDOC = "https://github.com/tammet/gkreasoner/blob/master/Doc/";
+var mcrefJob = null;
+
+function mcrefTeardown() {
+  if (!mcrefJob) return;
+  if (mcrefJob.gk) { try { mcrefJob.gk.terminate(); } catch (e) {} }
+  if (mcrefJob.worker) { try { mcrefJob.worker.terminate(); } catch (e) {} }
+  mcrefJob = null;
+}
+
+// one gk run in a fresh worker (see gkworker.js); cb(output)
+function mcrefGk(input, args, cb) {
+  var job = mcrefJob;
+  var w = new Worker("gkworker.js?v=1.2.5");
+  job.gk = w;
+  w.onmessage = function (ev) {
+    w.terminate();
+    if (mcrefJob !== job) return;
+    job.gk = null;
+    cb((ev.data && ev.data.output) ? ev.data.output : "");
+  };
+  w.onerror = function (e) {
+    if (mcrefJob !== job) return;
+    mcrefTeardown();
+    showResult("solver error: " + mcEsc((e && e.message) ? e.message : e));
+  };
+  w.postMessage({ input: input, args: args, kb: null });
+}
+
+function mcrefStart() {
+  var input = gid("gkc_1_input").value;
+  var samples = parseInt(gid("mc_trials").value, 10) || 20000;
+  mcrefTeardown();
+  var job = mcrefJob = { samples: samples };
+  showResult("reference tool: reading the input...");
+  mcrefGk(input, ["input", "-writejson", "-recursive"], function (conv) {
+    var asJson = conv.indexOf("passed through unchanged") >= 0;
+    var run = { cmd: "run", input: asJson ? input : conv, samples: samples, seed: 1,
+                maxGround: 200000 };
+    if (!asJson) { run.convertedBy = "gk -writejson -recursive"; run.conversionOutput = conv; }
+    showResult("reference tool: computing gk's own value...");
+    mcrefGk(input, ["input"].concat(buildArgs("recursive")), function (gkOut) {
+      job.gkOut = gkOut;
+      var w = new Worker("mcref.js?v=" + MCREF_BUILD);
+      job.worker = w;
+      w.onmessage = function (ev) {
+        var m = ev.data || {};
+        if (mcrefJob !== job) return;
+        if (m.progress !== undefined) {
+          showResult("reference tool: " + m.progress + " / " + samples + " worlds sampled...");
+          return;
+        }
+        w.terminate();
+        mcrefJob = null;
+        if (m.error) { showResult("reference tool failed: " + mcEsc(m.error)); return; }
+        mcrefRender(m.result, job.gkOut, samples);
+      };
+      w.onerror = function (e) {
+        if (mcrefJob !== job) return;
+        mcrefTeardown();
+        showResult("reference tool error: " + mcEsc((e && e.message) ? e.message : e));
+      };
+      showResult("reference tool: sampling " + samples + " worlds...");
+      w.postMessage(run);
+    });
+  });
+}
+
+// the half-width of the tool's interval: 95 % for the four shares of one
+// answer together (Hoeffding with a union bound), as mcref prints it
+function mcrefE(n) { return Math.sqrt(Math.log(8 / 0.05) / (2 * n)); }
+
+// gk's {"recursive": ...} line: the value per answer literal and the readings
+function mcrefGkValues(out) {
+  var r = { values: {}, order: [], readings: [], found: false };
+  var lines = String(out).split("\n"), d = null;
+  for (var i = 0; i < lines.length && !d; i++) {
+    if (lines[i].indexOf('{"recursive"') !== 0) continue;
+    try { d = JSON.parse(lines[i]).recursive; } catch (e) { d = null; }
+  }
+  if (!d) return r;
+  r.found = true;
+  (d.readings || []).forEach(function (x) {
+    var n = Array.isArray(x) ? x[0] : String(x);
+    if (r.readings.indexOf(n) < 0) r.readings.push(n);
+  });
+  if (Array.isArray(d.answers)) {
+    d.answers.forEach(function (a) {
+      var t = GkProofs.litText(a.answer);
+      r.values[t] = a.value; r.order.push(t);
+    });
+  } else if (d.question !== null && d.question !== undefined) {
+    var q = GkProofs.litText(d.question);
+    r.values[q] = d.value; r.order.push(q);
+  }
+  return r;
+}
+
+function mcrefTuple(v) {
+  if (!v) return "no value";
+  return "(" + v.map(function (x) { return (Math.round(x * 1000) / 1000).toString(); }).join(", ") + ")";
+}
+
+function mcrefRender(res, gkOut, samples) {
+  var html;
+  if (res.unsupported) {
+    html = "<p>The reference tool declines this input: <b>" + mcEsc(res.unsupported) +
+           "</b>. It computes the support semantics for inputs that it can ground " +
+           "over their constants: no function symbols, no equality, no taxonomy " +
+           "priorities (<a href=\"" + GKDOC + "mcref.md\">the reference tool</a>, " +
+           "Section 6).</p>";
+    showResult(html);
+    return;
+  }
+  var e = mcrefE(samples);
+  var gk = mcrefGkValues(gkOut);
+  var rows = res.answers || [];
+  var single = (rows.length === 1 && gk.order.length === 1);
+  var used = {};
+  html = "<p>Reference tool mcref " + mcEsc(res.version) + " (the support semantics), " +
+         samples + " sampled worlds, seed 1. Each share of the tool lies within " +
+         "e = " + e.toFixed(4) + " of the semantics' value, at 95 % for the four " +
+         "shares of one answer together. gk's value is the recursive method's, " +
+         "with the settings above.</p>";
+  html += '<table class="table table-condensed" style="width: auto;">';
+  html += "<tr><th>answer</th><th>reference tool<br>(for, against, conflict, ignorance)</th>" +
+          "<th>unresolved</th><th>gk</th><th>comparison</th></tr>";
+  for (var i = 0; i < rows.length; i++) {
+    var a = rows[i];
+    var gv = gk.values.hasOwnProperty(a.instance) ? gk.values[a.instance]
+           : (single ? gk.values[gk.order[0]] : undefined);
+    if (gk.values.hasOwnProperty(a.instance)) used[a.instance] = 1;
+    else if (single) used[gk.order[0]] = 1;
+    var cmp;
+    if (!gv) cmp = (a.value[0] <= e) ? "gk lists no answer; the tool's support is 0"
+                                     : "gk lists no answer";
+    else if (a.unstable > 0) cmp = "not compared: unresolved worlds";
+    else {
+      var d = 0;
+      for (var k = 0; k < 4; k++) d = Math.max(d, Math.abs(gv[k] - a.value[k]));
+      cmp = (d <= e + 1e-12) ? "agree (within e)" : ("differ by " + d.toFixed(3));
+    }
+    html += "<tr><td><code>" + mcEsc(a.instance) + "</code></td><td>" + mcrefTuple(a.value) +
+            "</td><td>" + (Math.round(a.unstable * 1000) / 1000) + "</td><td>" +
+            (gv === undefined ? "" : mcrefTuple(gv)) + "</td><td>" + cmp + "</td></tr>";
+  }
+  for (i = 0; i < gk.order.length; i++) {
+    var g = gk.order[i];
+    if (used[g]) continue;
+    html += "<tr><td><code>" + mcEsc(g) + "</code></td><td>no answer of the tool</td><td></td><td>" +
+            mcrefTuple(gk.values[g]) + "</td><td></td></tr>";
+  }
+  html += "</table>";
+  if (!rows.length && !gk.order.length) html += "<p>Neither the tool nor gk gives an answer.</p>";
+  if (!gk.found) html += "<p>gk printed no value line for this input.</p>";
+  if (gk.readings.length)
+    html += "<p>gk records the readings " + gk.readings.map(function (x) {
+              return "<code>" + mcEsc(x) + "</code>"; }).join(", ") +
+            ". A reading names an approximation or a convention of gk's " +
+            "evaluation; the approximations (such as <code>cycle cut</code>) can " +
+            "make gk's value differ from the tool's (<a href=\"" + GKDOC +
+            "recursive_output.md\">the readings</a>).</p>";
+  if (res.readings && res.readings.length)
+    html += "<p>The tool drops " + res.readings.length + " application(s) whose " +
+            "exception is one of their own conditions (they never apply).</p>";
+  showResult(html);
+}
+
 // ---- result tables -------------------------------------------------------
 
 function mcEsc(s) {
@@ -600,7 +989,7 @@ function mcRenderInclusion() {
   html += subtract
     ? "<th>provable</th><th>negation provable</th><th>difference (sampled)</th>"
     : "<th>provable (sampled)</th>";
-  html += "<th>95% interval</th><th>gk reports</th></tr>";
+  html += "<th>95% interval</th><th>gk: for &minus; against</th></tr>";
   for (i = 0; i < order.length; i++) {
     var key = order[i];
     var count = r.counts[key] || 0;
@@ -632,49 +1021,6 @@ function mcRenderInclusion() {
   showResult(html);
 }
 
-function mcRenderThreshold(msg) {
-  var r = mcRun;
-  if (msg.notScored) {
-    var note = mcNotesHtml();
-    mcTeardown();
-    showResult("<p>shared-threshold sampling is unsupported for this input: " +
-               mcEsc(msg.notScored) + ".</p>" + note);
-    return;
-  }
-  var ref = r.setup.reference || { answers: {} };
-  // the threshold query is ground, so gk answers it with true/false
-  var gkAns = ref.answers["yes"];
-  var d = (gkAns && gkAns.detail) ? gkAns.detail : null;
-  var fields = [["positive support", "support_for"],
-                ["negative support", "support_against"],
-                ["conflict", "conflict"],
-                ["ignorance", "ignorance"]];
-  var html = "<p>Sampling check: shared-threshold components, " +
-             msg.trials + " draws.</p>";
-  html += '<table class="table table-condensed" style="width: auto;">';
-  html += "<tr><th></th><th>sampled</th><th>gk reports</th></tr>";
-  for (var i = 0; i < fields.length; i++) {
-    var gkv = (d && typeof d[fields[i][1]] === "number")
-      ? String(Math.round(d[fields[i][1]] * 10000) / 10000) : "";
-    html += "<tr><td>" + fields[i][0] + "</td><td>" +
-            mcNum(msg[fields[i][1]]) + "</td><td>" + gkv + "</td></tr>";
-  }
-  html += "</table>";
-  html += "<p>Ordinary opposition uses one shared random threshold per " +
-          "ground atom; evidence counts only if its aggregated strength clears " +
-          "that threshold. A second independent draw is used for gated/default " +
-          "interactions, including support for an exception condition. The worlds " +
-          "selection does not apply to this mode: each draw deterministically " +
-          "evaluates the reachable grounded directed rules without running a " +
-          "prover, so it always uses " +
-          MC_THRESHOLD_DRAWS + " draws. Compare with the detailed report " +
-          "of an ordinary solve.</p>";
-  if (msg.priorityNote) r.notes.push(msg.priorityNote);
-  html += mcNotesHtml();
-  mcTeardown();
-  showResult(html);
-}
-
 // Wilson interval for one sampled proportion (port of gkmc.wilson).
 function mcWilson(k, n) {
   var z = 1.96;
@@ -701,23 +1047,18 @@ function mcPairedDiffCi(posOnly, negOnly, n) {
 
 function switchAdvanced() { $('#advanced_buttons').slideToggle('slow'); }
 
-// The worlds selection applies only to clause-activation sampling: a shared-threshold draw
-// runs no proof search and is nearly free, so that mode always uses
-// MC_THRESHOLD_DRAWS draws. While shared threshold is selected, the worlds
-// selector is greyed out and shows "automatic"; the previous choice is
-// restored on switching back.
-var mcTrialsBefore = "1000";
+// Each sampling method has its own number of worlds: the reference tool
+// mcref samples cheaply (no proof search per world) and defaults to 20000;
+// clause activation runs gk on every world and defaults to 1000. A choice
+// made for one method is kept while the other is selected.
+var mcTrialsFor = { mcref: "20000", subtract: "1000" };
+var mcMethodNow = "mcref";
 
 function mcMethodChanged() {
   var t = gid("mc_trials");
-  if (gid("mc_method").value === "threshold") {
-    if (t.value !== "auto") mcTrialsBefore = t.value;
-    t.value = "auto";
-    t.disabled = true;
-  } else {
-    if (t.value === "auto") t.value = mcTrialsBefore;
-    t.disabled = false;
-  }
+  mcTrialsFor[mcMethodNow] = t.value;
+  mcMethodNow = gid("mc_method").value;
+  t.value = mcTrialsFor[mcMethodNow] || "1000";
 }
 
 // the defaults shown in the fields: gk's own -confidence and
@@ -726,19 +1067,24 @@ function mcMethodChanged() {
 function resetAdvanced() {
   gid("seconds").value = "5";
   gid("detail").checked = false;
+  gid("fullproof").checked = false;
   gid("maxanswers").value = "10";
   gid("confidence").value = "0.1";
   gid("blockerconfidence").value = "0.5";
+  gid("method").value = "recursive";
+  methodChanged();
   gid("strategy").value = "";
-  gid("mc_method").value = "subtract";
-  gid("mc_trials").value = "1000";
-  mcTrialsBefore = "1000";
-  mcMethodChanged();
+  mcTrialsFor = { mcref: "20000", subtract: "1000" };
+  gid("mc_method").value = "mcref";
+  mcMethodNow = "mcref";
+  gid("mc_trials").value = "20000";
 }
 
 function applyPreset(p) {
+  if (p.method) { gid("method").value = p.method; methodChanged(); }
   if (p.seconds) gid("seconds").value = p.seconds;
   if (p.detail) gid("detail").checked = true;
+  if (p.fullproof) gid("fullproof").checked = true;
   if (p.maxanswers) gid("maxanswers").value = p.maxanswers;
   if (p.confidence) gid("confidence").value = p.confidence;
   if (p.blockerconfidence) gid("blockerconfidence").value = p.blockerconfidence;
@@ -903,6 +1249,12 @@ query(flies(X)).</textarea>
             <option value="11">Nixon diamond</option>
             <option value="12">where is John</option>
           </optgroup>
+          <optgroup label="Tweety, layer by layer">
+            <option value="24">Tweety 1: an exception</option>
+            <option value="25">Tweety 2: a disjunction</option>
+            <option value="26">Tweety 3: a yellow bill</option>
+            <option value="27">Tweety 3b: a certain rule</option>
+          </optgroup>
         </select>
         <select class="form-control" style="width: 140px;" id="select_advanced_example"
           aria-label="further examples" onchange="selectExample('advanced')">
@@ -916,7 +1268,7 @@ query(flies(X)).</textarea>
           <optgroup label="Other capabilities">
             <option value="13">arithmetic</option>
             <option value="14">equality</option>
-            <option value="15">conflict detail</option>
+            <option value="15">evidence in detail</option>
             <option value="20">planning (slow)</option>
             <option value="23">classification</option>
           </optgroup>
@@ -938,20 +1290,33 @@ query(flies(X)).</textarea>
         <button onclick="clearInput(this); return false;" class="btn btn-small btn-default"
         >Clear input</button>
         <div id="advanced_buttons" style="padding-top: 15px; display: none;">
+          <div style="display: inline-block; width: 62px; text-align: center;">method</div>
+          <select class="form-control" style="width: 150px;" id="method"
+            aria-label="the method: recursive (the default) or the direct method of gk 1.1.2"
+            onchange="methodChanged()">
+            <option value="recursive" selected>recursive</option>
+            <option value="direct">direct (gk 1.1.2)</option>
+          </select>
           <div style="display: inline-block; width: 62px; text-align: center;">seconds</div>
           <input type="text" class="form-control" id="seconds" value="5" style="width: 50px"
                  aria-label="time limit in seconds"></input>
           <label style="font-weight: normal; margin: 0 8px 0 15px; vertical-align: middle;"
                  >detailed&nbsp;report <input type="checkbox" id="detail"
                  style="margin: 0 0 0 5px; position: relative; top: 2px;"></label>
+          <label id="fullproof_label" style="font-weight: normal; margin: 0 8px 0 7px; vertical-align: middle;"
+                 title="with the recursive method: the sub-proofs that the nested searches found"
+                 >full&nbsp;proofs <input type="checkbox" id="fullproof"
+                 style="margin: 0 0 0 5px; position: relative; top: 2px;"></label>
           <div style="display: inline-block; width: 80px; text-align: center;">max&nbsp;answers</div>
           <input type="text" class="form-control" id="maxanswers" value="10" style="width: 55px"
                  aria-label="maximum number of answers"></input>
-          <div style="display: inline-block; width: 105px; text-align: center;">confidence&nbsp;limit</div>
-          <input type="text" class="form-control" id="confidence" value="0.1" style="width: 55px"
+          <div id="confidence_label" style="display: inline-block; width: 105px; text-align: center; opacity: 0.5;"
+               title="an option of the direct method">confidence&nbsp;limit</div>
+          <input type="text" class="form-control" id="confidence" value="0.1" style="width: 55px" disabled
                  aria-label="confidence limit: the minimum verdict confidence"></input>
-          <div style="display: inline-block; width: 100px; text-align: center;">exception&nbsp;limit</div>
-          <input type="text" class="form-control" id="blockerconfidence" value="0.5" style="width: 55px"
+          <div id="blockerconfidence_label" style="display: inline-block; width: 100px; text-align: center; opacity: 0.5;"
+               title="an option of the direct method">exception&nbsp;limit</div>
+          <input type="text" class="form-control" id="blockerconfidence" value="0.5" style="width: 55px" disabled
                  aria-label="exception limit: the minimum confidence an exception proof needs to block a default"></input>
           <a href="#advancedModal" data-toggle="modal" class="qlink">
             <button type="button" class="btn btn-default" style="
@@ -960,18 +1325,19 @@ query(flies(X)).</textarea>
              background-color: #cccccc; color: #337ab7; margin-left: 12px;">?</button></a>
           <div style="padding-top: 15px;">
             <div style="display: inline-block; width: 62px; text-align: center;">sampling</div>
-            <select class="form-control" style="width: 160px;" id="mc_method"
+            <select class="form-control" style="width: 210px;" id="mc_method"
               aria-label="sampling method" onchange="mcMethodChanged()">
+              <option value="mcref" selected>support semantics (mcref)</option>
               <option value="subtract">clause activation</option>
-              <option value="threshold">shared threshold</option>
             </select>
             <div style="display: inline-block; width: 50px; text-align: center;">worlds</div>
             <select class="form-control" style="width: 100px;" id="mc_trials"
               aria-label="number of sampled worlds">
               <option value="300">300</option>
-              <option value="1000" selected>1000</option>
+              <option value="1000">1000</option>
               <option value="10000">10000</option>
-              <option value="auto" hidden>automatic</option>
+              <option value="20000" selected>20000</option>
+              <option value="100000">100000</option>
             </select>
             <button onclick="useSampling(this); return false;"
               class="btn btn-small btn-primary" style="width: 80px; margin-left: 10px;">Sample</button>
@@ -1024,18 +1390,16 @@ class="btn btn-small btn-default">Hide help</button>
 <p>Pick an example from one of the two menus: the problem appears in the
 text box with an explanation above it. Press <i>Solve</i> to run the
 reasoner &mdash; it runs entirely in your browser &mdash; and read the
-answer, its confidence and its proof in the <i>Result</i> area, with notes
-below. Then edit the problem, or clear the box and write your own.
+answers, their four shares and their proofs in the <i>Result</i> area, with
+notes below. Then edit the problem, or clear the box and write your own.
 <i>Stop</i> interrupts a long search; <i>Browse</i> loads a file.</p>
-<p>The <i>Advanced</i> button opens further controls: the time limit, the
-detailed report (a four-component breakdown of the evidence for each
-answer), a cap on the number of answers, the confidence limit &mdash; the
-minimum verdict confidence an answer needs, the absolute difference between
-its positive and negative support &mdash; the exception limit &mdash; the
-minimum confidence an exception proof needs to block a default &mdash; a
-sampling check that re-estimates reported values by simulation, and a
-search-strategy field. The <b>?</b> button next to the fields explains
-each of them.</p>
+<p>The <i>Advanced</i> button opens further controls: the method (the
+recursive method, or the older direct method), the time limit, the detailed
+report (the evidence that gk collected), full proofs (the sub-proofs that
+the nested searches found), a cap on the number of answers, two limits of
+the direct method, a sampling check that computes the answer a second time
+by sampling, and a search-strategy field. The <b>?</b> button next to the
+fields explains each of them.</p>
 
 <h4>Syntax in brief</h4>
 <p>Statements end with a period. <code>%</code> starts a line comment,
@@ -1053,8 +1417,8 @@ lowercase names are constants, predicates and functions.</p>
 <tr><td><code>0.7::rain(X) :- dark_clouds(X).</code></td>
     <td>an uncertain rule</td></tr>
 <tr><td><code>flies(X) :- bird(X), unless(-flies(X), 2).</code></td>
-    <td>a default rule with priority 2: applies unless
-        <code>-flies(X)</code> can be argued</td></tr>
+    <td>a default rule with rank 2: applies unless
+        <code>-flies(X)</code> is established</td></tr>
 <tr><td><code>male(X) ; female(X) :- person(X).</code></td>
     <td>alternative conclusions (or)</td></tr>
 <tr><td><code>:- penguin(X), flies(X).</code></td>
@@ -1077,57 +1441,42 @@ reference:
 <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/input_languages.md">input languages</a>.</p>
 
 <h4>Understanding results and proofs</h4>
-<p>The first line of the result states the outcome. <code>answer found</code>
-comes with one or more answers; <code>no information</code> means neither
-the question nor its negation could be derived; <code>no answers
-found</code> means an open question produced no values;
-<code>evidence below limit</code> means a proof exists but its confidence
-stays under the threshold; <code>time limit, proof not found</code> speaks
-for itself. Note that <code>false</code> and <code>no information</code>
-are different outcomes: <code>false</code> means the explicit negation of
-the question was derived, while <code>no information</code> means nothing
-was derived either way.</p>
-<p>Each proof is a numbered list of steps, most recent conclusions built
-from earlier ones. The step forms:</p>
-<ul>
-<li><code>in(name)</code> &mdash; an input statement; <code>frm_3</code>
-names the third statement of an input without explicit names;</li>
-<li><code>goal(name)</code> &mdash; the question, negated for the proof
-search;</li>
-<li><code>mp(...)</code> &mdash; a resolution step combining the listed
-earlier steps; two premises as in <code>mp(1, 2)</code> are the common
-case, but three or more occur, as in <code>mp(1, 4, 5)</code>. A decimal
-as in <code>mp(1.3, 2)</code> identifies which literal of the
-clause in step 1 was used: its third one;</li>
-<li><code>cumul(1, 2)</code> &mdash; alternative proofs of the same answer
-combined, with shared evidence accounted for;</li>
-<li><code>=</code> &mdash; an equality rewriting step;
-<code>arithinst(...)</code> &mdash; an arithmetic instantiation;</li>
-<li><code>simp(1, 2)</code> &mdash; a simplification.</li>
-</ul>
-<p>The number at the end of each step is the stored support value at that step.
-Answers produced by default rules list their <code>blockers</code>: the
-exception conditions the answer depends on. Candidates defeated by
-exceptions or opposing evidence appear as <code>rejected answer</code>
-blocks with the candidate's own proof; a <code>proof against</code> is
-included when the answer's explicit negation was derived. With the
-<i>detailed report</i> checked, each answer also shows the four-component
-report: support for the answer, support for its negation, conflict, and
-ignorance.</p>
+<p>The result is a table with one row per answer: the support for it, the
+support against it, conflict and ignorance, which sum to 1, and the signed
+confidence, the support for minus the support against. A question with a
+variable gets one row per answer that gk's proofs found. A share of 0 for a
+statement does not make it false: false needs support for its explicit
+negation. Below the table, <i>readings</i> name the approximations that gk
+applied, and <i>search</i> says how far the nested searches got.</p>
+<p>The <i>proofs</i> expander of each answer holds its resolution proofs:
+the proofs for it, against it and of the exceptions left in them, as
+numbered steps such as <code>in(name)</code> (an input statement),
+<code>goal(name)</code> (the negated question) and <code>mp(3.1, 4)</code>
+(a resolution step on literal 1 of step 3 and on step 4). A proof shows the
+main structure of the reasoning. The sub-proofs that the nested searches
+found for or against its steps count in the value; <i>full proofs</i> under
+Advanced shows them too, each under its step. The <i>reading the output</i>
+dialog explains every part, and the
+<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/recursive_output.md">output reference</a> describes
+the raw output.</p>
 <p>Failure to find a proof is not by itself proof of falsity: the time
-limit and the search strategy can miss proofs. Only an explicit proof of
-the negation makes a ground answer <code>false</code>.</p>
+limit and the search strategy can miss proofs.</p>
 
 <h4>Full documentation</h4>
 <ul>
 <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/input_languages.md">Input languages</a> &mdash; GKP, JSON, GKS and TPTP in full</li>
-<li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/how_gk_works.md">How gk works</a> &mdash; the algorithms behind confidence, defaults and negative support</li>
+<li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">The support semantics</a> &mdash; what the four shares mean, explained on examples</li>
+<li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/how_gk_works.md">How gk works</a> &mdash; the recursive method on examples</li>
+<li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/recursive_output.md">The output</a> &mdash; the result line, the proofs, the readings and the dump</li>
 <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/cli_reference.md">Command line reference</a> &mdash; every option of the native binaries</li>
 <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/strategy_reference.md">Strategy reference</a> &mdash; the search-strategy JSON accepted under Advanced</li>
-<li><a href="https://github.com/tammet/gkreasoner/tree/master/montecarlo">Monte Carlo checkers</a> &mdash; the sampling interpretation behind the sampling check</li>
+<li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/mcref.md">The reference tool mcref</a> &mdash; the support semantics computed by sampling, used by the sampling check</li>
+<li><a href="https://github.com/tammet/gkreasoner/tree/master/montecarlo">Clause-activation sampler</a> &mdash; the second method of the sampling check</li>
 <li>
-  Research papers:
-  <a href="https://arxiv.org/abs/2608.09190">uncertainty propagation and proof structure (2026)</a>
+  Research papers: the support semantics and the recursive method are in a
+  paper in preparation (2026), whose semantics the support semantics page
+  states. Older versions of gk:
+  <a href="https://arxiv.org/abs/2608.09190">uncertainty propagation and proof structure (2026, the direct method)</a>
   &middot;
   <a href="https://link.springer.com/chapter/10.1007/978-3-031-10769-6_18">defaults and exceptions (2022)</a>
   &middot;
@@ -1169,42 +1518,36 @@ Draheim.</p>
             <h4 class="modal-title" style="color: black;">How this solver works</h4>
       </div>
       <div class="modal-body">
-<p><a href="https://github.com/tammet/gkreasoner">gk</a> is a first-order
-reasoner: it works on facts and rules about objects and their properties,
-with variables ranging over the objects &mdash; the logic of statements like
-<i>every bird is an animal</i>. Proofs are found by resolution search, built
-on the <a href="index.html">gkc</a> theorem prover.</p>
-<p>Two kinds of rules can be written. A strict rule holds without
-exception: whenever its conditions are derived, so is its conclusion. A
-default rule normally applies but is withdrawn when an exception is
-established &mdash; birds fly, but a penguin does not. On top of this
-distinction gk adds:</p>
-<ul>
-<li><b>Input confidences.</b> Any fact or rule can carry a confidence between 0 and 1.
-A proof multiplies the confidences of its distinct ground evidence instances;
-alternative proofs of the same answer are combined from their instance sets so
-that shared
-evidence is not counted twice.</li>
-<li><b>Negative support.</b> The negation of a statement can have its own
-support. gk runs a separate proof search for the negation of an answer. When a
-relevant predicate is contested, it also runs a report-time directed backward
-search over the input clauses to assess opposition to intermediate premises.
-It reports the resulting assessment as positive support, negative support,
-conflict and ignorance.</li>
-<li><b>Defaults and exceptions.</b> Rules with <code>unless</code> apply only
-when their exception condition cannot be argued. Competing defaults are resolved by
-priorities. A certain strict argument defeats a default. Candidate answers
-defeated by exceptions are shown as rejected answers with their proofs.</li>
-<li><b>Contradiction tolerance.</b> Opposing inputs produce conflict reported
-for the affected answers. JSON detail output can name contested premises.</li>
-</ul>
-<p>The signed confidence of a proposition is its positive support minus its
-negative support. Its sign gives the favored polarity and its magnitude is the
-confidence in that verdict. This assesses evidence found by the answer proof
-searches and the directed premise assessment; it is not a probability
-calculated from a complete probability model. The algorithms are
-described in
-<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/how_gk_works.md">how gk works</a>.</p>
+<p><a href="https://github.com/tammet/gkreasoner">gk</a> is a first-order reasoner: it works on facts
+and rules about objects and their properties, with variables ranging over the
+objects &mdash; the logic of statements like <i>every bird is an animal</i>.
+It finds proofs by resolution, with the <a href="index.html">gkc</a> prover
+as its core.</p>
+<p>Facts and rules can carry a confidence between 0 and 1. A rule can have
+exceptions (<code>unless</code>), and a negated statement can have evidence
+of its own. For a question gk reports four shares: support for the
+statement, support against it, conflict and ignorance.</p>
+<p>gk answers with the <b>recursive method</b>:</p>
+<ol>
+<li>It searches for a proof of the question.</li>
+<li>It turns each proof into <i>applications</i>: one use of one input
+statement, with its conditions, its exceptions and its confidence.</li>
+<li>For each application it starts nested searches: for opposition to the
+conclusion, for further support and opposition at each condition, and for
+each exception. Deeper searches get smaller time allowances. The proofs they
+find add applications and searches of their own.</li>
+<li>At checkpoints, one calculation over all the applications found gives
+the four shares. Shared evidence counts once.</li>
+</ol>
+<p>The four shares follow the <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">support semantics</a>. The reference tool of the sampling
+check computes the same semantics in another way, so the two can be
+compared. gk reports the latest completed calculation, with notes on what it
+does not include: searches cut by their time allowance, and the
+approximations (<i>readings</i>) that it applied. <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/how_gk_works.md">How gk works</a> explains the method
+on examples.</p>
+<p>The older <i>direct method</i> of gk 1.1.2, gk's default before version
+1.2.0, can be chosen under <i>Advanced</i>. It prints its own result format
+(<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/direct_method.md">the direct method</a>).</p>
       </div>
     </div>
   </div>
@@ -1219,51 +1562,58 @@ described in
             <h4 class="modal-title" style="color: black;">Reading the output</h4>
       </div>
       <div class="modal-body">
-<p>The first line states the overall result. Common values are
-<code>answer found</code>; <code>evidence below limit</code> (a proof was
-found below the confidence threshold); <code>no information</code> (neither
-polarity of a ground query was proved); <code>no answers found</code> (an open
-query produced no values); and <code>time limit, proof not found</code>.
-Note that <code>false</code> and <code>no information</code> are different
-outcomes: <code>false</code> means the explicit negation of the question
-was derived, while <code>no information</code> means nothing was derived
-either way.</p>
-<p>Each answer block contains:</p>
+<p>The result table has one row per answer: the answer and its four
+shares, which sum to 1.</p>
 <ul>
-<li><code>answer:</code> a value for the query variable, or
-<code>true</code>/<code>false</code> for a ground query;</li>
-<li><code>confidence:</code> the absolute value of positive support minus
-negative support, 0 to 1. The answer or rejected-answer heading carries the
-sign, so this is the confidence in the verdict as printed;</li>
-<li><code>blockers:</code> for answers produced by default rules, the
-exception conditions the answer depends on;</li>
-<li><code>proof for</code> and, when relevant, <code>proof against</code>:
-numbered derivation steps. <code>in(name)</code> is an input statement,
-<code>goal(name)</code> the (negated) question,
-<code>mp(...)</code> a resolution step from the listed earlier steps (two
-or more) &mdash; a
-decimal as in <code>mp(1.3, 2)</code> names the literal of the clause that
-was used &mdash; <code>cumul(i, j)</code> a combination of alternative
-proofs with shared evidence accounted for, <code>=</code> an equality step,
-<code>arithinst</code> an
-arithmetic instantiation. The number at the end of each step is the stored
-support value at that step;</li>
-<li><code>rejected answer:</code> a candidate defeated by exceptions or
-opposing evidence, shown with the candidate's own proof; a
-<code>proof against</code> is included when the answer's explicit negation
-was derived.</li>
+<li><b>for</b>: the share in which the statement is established and can be
+used in further reasoning;</li>
+<li><b>against</b>: the share in which its negation is established;</li>
+<li><b>conflict</b>: evidence for both sides passed, and neither can be
+used;</li>
+<li><b>ignorance</b>: nothing is established either way.</li>
 </ul>
-<p>Failure to find a proof is not by itself proof of falsity: the time
-limit and the search strategy can miss proofs. Only an explicit proof of
-the negation produces <code>false</code> for a ground question.</p>
-<p>With the <i>detailed report</i> switched on (under Advanced), each answer
-also shows <code>support</code> and <code>conflict / ignorance</code> lines
-giving the four components of the report &mdash; support for the answer,
-support for its negation, conflict (claimed by both polarities), and ignorance
-(claimed by neither polarity); the four components sum to 1 &mdash; plus warning
-flags such as <code>CONTESTED</code>. JSON detail output can also include a
-list of conflict sources.</p>
-<p>JSON input produces JSON output; TPTP input produces TPTP-style output.</p>
+<p><b>signed</b> is the support for minus the support against. A question
+with a variable gets one row per answer that gk's proofs found; an instance
+without a proof is not listed. A share of 0 for a statement does not make
+it false: false needs support for its negation.</p>
+<p><b>readings</b> name the approximations and conventions that gk applied
+to the value. For example, <code>cycle cut</code> marks a cycle that gk cut
+in order to evaluate it. <b>search</b> says how many nested searches ran,
+how many their time allowance cut, and which checkpoint the value comes
+from. A search that did not finish may have missed evidence: more time can
+change the value.</p>
+<p><b>proofs</b>, behind the expander under the table, are the resolution
+proofs of each answer: the proofs for it (<code>for #1</code>, ...),
+against it (<code>against #1</code>, ...) and of the exceptions left in
+them (<code>guard #1</code>, ...). Each proof is a numbered list of
+steps:</p>
+<ul>
+<li><code>in(name) c</code>: an input statement with confidence c;
+<code>frm_3</code> names the third statement of an input without
+names;</li>
+<li><code>goal(name)</code>: the question, negated for the proof search;
+<code>goal(task)</code>: the goal of a nested search;</li>
+<li><code>mp(3.1, 4) c</code>: a resolution step on the clauses of steps 3
+and 4; <code>3.1</code> is literal 1 of step 3, counted from 0; c is the
+confidence of the new clause;</li>
+<li><code>simp</code>, <code>=</code> and <code>arithinst</code>: a
+simplification, an equality step and an arithmetic instantiation;</li>
+<li><code>unless(L, k)</code> in a clause: an exception that the proof
+leaves open; the nested searches look for L.</li>
+</ul>
+<p>A proof shows the main structure of the reasoning: the steps by which the
+proof search derived the answer. The nested searches can also find
+sub-proofs for or against these steps, for example a proof that weakens a
+premise. The value counts them, but the proof does not show them. With
+<i>full proofs</i> (under Advanced) each sub-proof stands under the step
+whose search found it, two blanks deeper. <i>listed as against #1</i> refers
+to a proof listed above; <i>no input instance beyond the proof above</i>
+marks a sub-proof that uses no new evidence; <i>not used in the value</i>
+marks a proof from which gk made no application.</p>
+<p><b>raw output</b> shows what gk printed: the <code>{"recursive": ...}</code>
+line, then the dump of the evidence. <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/recursive_output.md">The output reference</a> describes every field. With
+the direct method the result is the direct method's own output, shown as
+text.</p>
       </div>
     </div>
   </div>
@@ -1278,43 +1628,41 @@ list of conflict sources.</p>
             <h4 class="modal-title" style="color: black;">From input confidence to answer support</h4>
       </div>
       <div class="modal-body">
-<p>Four rules cover most of what the examples show:</p>
+<p>The four shares are defined by the <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">support semantics</a>. Its picture: every
+ground statement (an <i>atom</i>, such as <code>bird(t)</code>) gets a
+random number between 0 and 1, and a complete set of these numbers is a
+<i>world</i>. A statement with confidence .8 establishes its atom in the
+worlds where the atom's number is below .8. The report gives the share of
+worlds in each of the four states. gk computes the shares without sampling;
+the reference tool of the sampling check samples worlds to check gk.</p>
+<p>A few rules cover most of the examples:</p>
 <ul>
-<li><b>Chaining multiplies.</b> A derivation using distinct ground evidence
-instances with confidences c1, c2, ... supports its conclusion with c1
-&middot; c2 &middot; &hellip;. Repeated use of the same ground instance within
-one proof counts once.</li>
-<li><b>Disjoint supports combine.</b> Supports based on disjoint evidence
-instances combine as 1 &minus; (1 &minus; s1)(1 &minus; s2) &mdash; the
-answer fails only if both supports fail. This formula is often called
-noisy-OR.</li>
-<li><b>Shared evidence is not double-counted.</b> gk reconstructs the ground
-evidence-instance set of each retained proof and combines the sets by
-inclusion&ndash;exclusion. Two proofs standing on the same uncertain instance
-are not treated as independent confirmation.</li>
-<li><b>Opposing support is resolved.</b> Support for the negation of an
-answer is compared with support for it; the overlapping part is reported as
-conflict. Opposition to an intermediate premise is found by a separate,
-report-time directed backward search over the input clauses, not merely by
-inspecting the retained answer proof.</li>
+<li><b>Chaining multiplies.</b> <code>0.8::bird(t).</code> and
+<code>0.9::flies(X) :- bird(X).</code> give <code>flies(t)</code>
+(.72, 0, 0, .28): .8 &times; .9.</li>
+<li><b>Independent sources combine.</b> Two sources of .5 and .6 for one
+statement give 1 &minus; (1 &minus; .5)(1 &minus; .6) = .8 (noisy-or).</li>
+<li><b>Shared evidence counts once.</b> Two proofs that rest on the same
+uncertain fact do not confirm each other.</li>
+<li><b>Evidence for and against one atom is tested on one number.</b>
+<code>0.7::flies(a).</code> and <code>0.4::-flies(a).</code> give
+(.3, 0, .4, .3): where the number is below .4 both sides pass (conflict),
+between .4 and .7 only the stronger side passes, and above .7 neither
+does. The weaker side never wins alone.</li>
+<li><b>A rule applies only where its conditions can be used.</b> Doubt
+about a premise reduces every conclusion built on it. In example 7,
+<code>0.5::bird(tweety)</code> against <code>0.2::-bird(tweety)</code>
+leaves the bird premise usable in .3 of the worlds, and the rule
+<code>0.9::flies(X) :- bird(X)</code> gives .3 &times; .9 = .27.</li>
 </ul>
-<p>The four-component report decomposes the assessment. Its signed confidence is</p>
-<pre><code>confidence = positive support - negative support</code></pre>
-<p>The sign selects the favored polarity; the magnitude is the confidence in
-that verdict. Conflict and ignorance do not add direction, but distinguish
-strong balanced disagreement from a lack of information.</p>
-<p>A confidence of 1 means full support within gk's evidence model. A
-confidence of 0 means that no support survives, <i>not</i> that the
-statement is false. Zero may result from ignorance or from exactly balanced
-support for the statement and for its negation; the detailed report
-distinguishes these cases. A
-false answer is obtained by deriving the statement's explicit classical
-negation:</p>
+<p>A confidence is a strength of support, not a probability that the
+statement is true. For an unopposed statement it behaves like a
+probability; the difference shows where evidence is opposed. A false answer
+needs support for the statement's explicit negation:</p>
 <pre><code>flies(tweety)      evidence for flying
 -flies(tweety)     evidence that Tweety does not fly</code></pre>
-<p>The reported numbers assess evidence from the retained answer proofs and,
-where relevant, the separate directed premise search. gk does not build a
-complete probability model of the knowledge base.</p>
+<p>The signed confidence is the support for minus the support against.
+Reasoning between atoms uses the four states, not that difference.</p>
       </div>
     </div>
   </div>
@@ -1329,43 +1677,42 @@ complete probability model of the knowledge base.</p>
             <h4 class="modal-title" style="color: black;">Defaults, exceptions and priorities</h4>
       </div>
       <div class="modal-body">
-<p>A default is a rule that normally applies but may be withdrawn when an
-exception is established. For example, birds normally fly, although
-penguins do not. In the readable GKP/GKS notation a default is written with
-<code>unless</code>:</p>
+<p>A rule can say when it does not apply. In the GKP and GKS notations
+an exception is written with <code>unless</code>:</p>
+<pre><code>0.9::flies(X) :- bird(X), unless(injured(X)).</code></pre>
+<p>The rule applies in a world only when its conditions hold and its
+exception cannot be used there, that is, <code>injured(X)</code> is not
+established. An exception is tested for usability, not for truth: an
+exception in conflict or in ignorance does not block. So
+<code>unless(e)</code> differs from a condition <code>-e</code>: where
+nothing is known about <code>e</code>, the rule with <code>unless(e)</code>
+applies, and the rule with <code>-e</code> does not.</p>
+<p>Most exceptions are the negation of the rule's own conclusion: birds fly
+unless they do not fly. Such a rule is a <b>default</b>, and the number in
+its exception is its <b>rank</b>:</p>
 <pre><code>flies(X) :- bird(X), unless(-flies(X), 2).</code></pre>
-<p>Internally gk translates <code>unless</code> into a <i>blocker</i>
-literal; the blocker shown in a proof records the exception on which that
-answer depends: the exception undercuts that particular rule application
-rather than counting as support for the opposite conclusion. gk first
-derives the conclusion as a candidate carrying the blocker, then searches
-for arguments for the exception condition:</p>
 <ul>
-<li>no blocking proof found &mdash; the answer stands, and its blockers are
-listed;</li>
-<li>a confidence-1 strict argument (no <code>unless</code> in its own
-support) &mdash; the candidate is defeated and shown as a rejected answer.
-Strict evidence defeats a default independently of any priority;</li>
-<li>an argument from a <i>higher-priority</i> default &mdash; likewise
-defeated;</li>
-<li>an argument from a <i>lower-priority</i> default &mdash; the argument is
-ignored;</li>
-<li>an <i>equal-priority</i> argument &mdash; the two defaults block each
-other and gk commits to neither polarity (the Nixon diamond example).</li>
-<li>uncertain support for the exception condition splits the report: the
-default keeps the share not covered by the support for the exception, the
-rest becomes support for the negation, and the stronger polarity determines whether
-the answer stands or is shown as rejected (the exception example).</li>
+<li><b>A default yields to an ordinary contrary.</b> Where evidence against
+the conclusion passes, the default does not apply. With
+<code>0.9::-flies(tweety)</code> against this default,
+<code>flies(tweety)</code> is (.1, .9, 0, 0) (example 9).</li>
+<li><b>The higher rank wins</b> where two defaults pass: in example 10 the
+flying default of rank 3 defeats the not-flying default of rank 2 for
+objects.</li>
+<li><b>Equal ranks block each other.</b> In the Nixon diamond neither default
+can be used, and the answer is ignorance, not conflict (example 11).</li>
+<li><b>Rank 0 is not a lower rank.</b> <code>unless(E)</code> without a
+number has rank 0, and where either default has rank 0 the two count as
+equal.</li>
 </ul>
-<p>Priorities are numbers, higher wins &mdash; they matter only when
-defaults compete. In larger knowledge bases priorities can also be derived
-from a taxonomy &mdash; a more specific class defeats a more general one
-&mdash; using <code>tax(class)</code> in place of a number; this needs
-auxiliary data files and is used by the taxonomy classification example.
-Background: the general idea goes back to
-<a href="https://en.wikipedia.org/wiki/Default_logic">default logic</a>,
-although gk is not an implementation of one standard default-logic
-calculus.</p>
+<p>In larger knowledge bases a rank can come from a taxonomy, as in
+<code>unless(-flies(X), tax(bird))</code>: a more specific class defeats a
+more general one. This needs the taxonomy data files and is used by the
+taxonomy classification example. Sections 5 and 6 of the <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">support semantics</a> give the
+rules in full. The idea goes back to
+<a href="https://en.wikipedia.org/wiki/Default_logic">default logic</a>: a
+default whose exception is its own negated conclusion is Reiter's normal
+default.</p>
       </div>
     </div>
   </div>
@@ -1380,82 +1727,39 @@ calculus.</p>
             <h4 class="modal-title" style="color: black;">Checking results by sampling</h4>
       </div>
       <div class="modal-body">
-<p>gk computes support from retained answer proofs and, for relevant contested
-predicates, a separate directed premise search (see <i>from input confidence to
-answer support</i>). Sampling checks the reported values
-against a concrete reading: treat each input confidence as an activation
-probability, generate many random worlds accordingly, and count what happens.
-The controls are in the <i>Advanced</i> panel.</p>
+<p>The sampling check computes the answer a second time, in another
+way, so that the two numbers can be compared. Its controls are in the
+<i>Advanced</i> panel. There are two methods.</p>
 <ul>
-<li><b>Clause activation</b> builds each world by keeping every uncertain
-statement with probability equal to its input confidence and dropping it
-otherwise; certain statements are always kept. An unweighted proof search
-then decides the world. The result reports, per
-answer, the fraction of worlds in which it is provable, the fraction in
-which its explicit negation is provable, and the difference between the two
-&mdash; which mirrors how gk combines support for an answer with support for
-its negation. One proof search runs
-per world in your browser, so thousands of worlds take up to a few
-minutes; the 95% interval in the result shows the sampling precision.</li>
-<li><b>Shared threshold</b> estimates the four components shown by the
-detailed report: positive support, negative support, conflict and ignorance.
-For ordinary opposition, positive and negative support for a ground atom face
-one shared threshold, so their overlap is conflict. A second independent draw
-is used for gated/default interactions, including support for an exception
-condition. Each draw follows every reachable grounded rule in its directed
-reading and evaluates the resulting dependency graph; it does not run a proof
-search. The calculation is therefore fast, always uses 100000 draws, and
-ignores the <i>worlds</i> selection. It supports a narrower class of inputs: a
-question without variables and directional rules whose conclusions can be
-identified.</li>
+<li><b>Support semantics (mcref)</b>, the default, runs the reference tool
+<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/mcref.md">mcref</a> in your browser. The tool computes the support semantics by
+sampling worlds, as the semantics defines them (see <i>from input
+confidence to answer support</i>), and it shares no code with gk's
+evaluation. The table shows, per answer, the tool's four shares, the
+<i>unresolved</i> share (worlds in which a cycle leaves an atom without a
+state), gk's own value with the current settings, and whether the two
+agree. Each share of the tool lies within e of the semantics' value, at
+95 % for the four shares of one answer together; with 20,000 worlds e is
+about .011. Where gk records a reading such as <code>cycle cut</code>, its
+value can differ from the tool's (example 18). The tool declines inputs
+that it cannot ground over their constants: function symbols, equality and
+taxonomy ranks.</li>
+<li><b>Clause activation</b> measures a different quantity. Each world
+keeps every uncertain statement with a probability equal to its confidence
+and drops it otherwise; certain statements are always kept. An unweighted
+proof search then decides the world. The result gives, per answer, the
+fraction of worlds in which it is provable, the fraction in which its
+negation is provable, and their difference, beside gk's signed confidence.
+This reading counts a contested premise as harmless: in example 7 it gives
+about .45, where the semantics and gk give .27. One proof search runs per
+world, so a thousand worlds can take a minute.</li>
 </ul>
-<p><b>When the two numbers differ.</b> The solver and the sampling check
-often agree, and agreement supports an activation-probability reading of the
-input confidences. A persistent difference indicates an implementation or semantic
-discrepancy. In the documented cases below, the methods answer different
-questions: the solver pools retained answer proofs and, when relevant, uses a
-separate directed input-clause search to resolve opposition on premises before
-propagation. The
-clause-activation sampler counts the worlds in which the answer is derivable
-and subtracts the worlds in which its negation is derivable.</p>
-<p>One example on this page shows the two calculations reaching the same
-result from two directions, and one shows them pulling apart.</p>
-<p>In <i>an exception</i> (example 9), the solver rejects Tweety flying
-with a negative margin of 0.8: the flying default holds only in the one case
-in ten where support for its exception condition is absent, so positive
-support is 0.1 and negative support is 0.9. The sampling check arrives at the
-same split: in 90 of 100 worlds the evidence for Tweety not flying is active,
-and there "Tweety does not fly" is itself provable;
-in the other 10 the default goes through. The sampled table shows the same
-two ingredients &mdash; provable in 0.1 of the worlds, the negation
-provable in 0.9 &mdash; and its difference of about &minus;0.8 matches the
-solver's result.</p>
-<p>In <i>contested premises</i> (example 7), the solver reports 0.27: it
-first resolves the opposing support on the bird premise &mdash; 0.5 positive
-and 0.2 negative leaves 0.3 usable support &mdash; and lets only that support
-feed the flying rule. The
-sampling check reports about 0.45, because "Tweety is not a bird" never
-makes "Tweety does not fly" derivable, so in a scenario count the doubt
-changes nothing. In the solver's dependency-aware evaluation, doubt about a
-premise reduces every conclusion built on it.</p>
-<p>Two further sources of difference: the grounded sampler evaluates all
-reachable instances of a recursive rule while the solver can pool only the
-proof family retained by bounded search, and defaults with priorities are
-sampled only in the
-documented cases. Use the solver's number as an assessment of the
-arguments, the sampled number as a scenario frequency, and a difference
-between them as a pointer to something worth understanding in the example
-&mdash; usually an exception, contested evidence, or competing
-defaults.</p>
-<p>Sampling needs a small, finite input: constants only, no function terms,
-no arithmetic or equality, no background knowledge base. Of the examples on
-this page, 1&ndash;12 and 15&ndash;19 qualify (12 grounds into many clauses
-and samples slowly); the rest use function terms, arithmetic, equality or a
-large knowledge base, and say so instead of estimating. The method and its
-limits are described in the
-<a href="https://github.com/tammet/gkreasoner/tree/master/montecarlo">montecarlo
-directory</a> of the gkreasoner repository; the estimates are repeatable
-&mdash; the same input and world count give the same sampled worlds.</p>
+<p>Both methods need a small, finite input: constants only, without function
+terms, arithmetic, equality or a background knowledge base. The estimates
+are repeatable: the same input and world count give the same sampled
+worlds. <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/mcref.md">The reference tool</a> and the
+<a href="https://github.com/tammet/gkreasoner/tree/master/montecarlo">clause-activation sampler</a> are
+described in the gkreasoner repository.</p>
       </div>
     </div>
   </div>
@@ -1472,33 +1776,37 @@ directory</a> of the gkreasoner repository; the estimates are repeatable
             <h4 class="modal-title" style="color: black;">The advanced controls</h4>
       </div>
       <div class="modal-body">
-<p><b>seconds</b> is the time limit for the whole search. When it runs
-out, the results found so far are reported; a hard example (planning, a
-large knowledge base) may need more than the default 5.</p>
-<p><b>detailed report</b> adds a four-component breakdown for each answer
-&mdash; positive support, negative support, conflict and ignorance &mdash;
-together with the proof found for the negation, notes on contested
-premises, and the exact rule instances used. Without it only the answer,
-its signed confidence and its proof are shown.</p>
+<p><b>method</b>: <i>recursive</i>, the default, is gk's method since
+version 1.2.0. <i>direct (gk 1.1.2)</i> runs the older direct method and
+shows its own output as text.</p>
+<p><b>seconds</b> is the time limit for the whole search. When it runs out,
+gk reports the value of the latest completed calculation, and the
+<i>search</i> line counts the nested searches that their time allowance
+cut. A hard example (planning, a large knowledge base) may need more than
+the default 5.</p>
+<p><b>detailed report</b>: with the recursive method it adds the evidence
+that gk collected, the table of applications (each one use of one input
+statement, with its conditions, exceptions, confidence and rank) and the
+status facts. With the direct method it adds the direct method's
+four-component report.</p>
+<p><b>full proofs</b> (recursive method): every proof also shows the
+sub-proofs that the nested searches found, each under the step whose search
+found it. Without it a proof shows its main structure only.</p>
 <p><b>max answers</b> caps how many distinct answers an open question
-collects before the search stops. Raise it when a question has many
-values; lower it to 1 to stop at the first answer found.</p>
-<p><b>confidence limit</b> is the minimum verdict confidence an answer
-needs: the absolute difference between its positive and negative support.
-An answer whose proof exists but whose confidence stays under the limit is
-reported as <code>evidence below limit</code>. The default 0.1 discards
-near-ties between support and counter-support.</p>
-<p><b>exception limit</b> is the acceptance threshold for an exception in
-a default rule: an <code>unless</code> condition blocks or discounts its
-rule only when the exception is established with at least this confidence.
-The default 0.5 means an exception must be more likely than not. Evidence
-below the limit is ignored entirely, so an answer can change abruptly when
-pooled exception evidence crosses it; lowering the limit lets weaker
-exceptions count.</p>
+collects. Raise it when a question has many values; lower it to 1 to stop
+at the first answer found.</p>
+<p><b>confidence limit</b> (direct method): the minimum verdict confidence
+an answer needs, the absolute difference between its support for and
+against. An answer under the limit is reported as <code>evidence below
+limit</code>. The recursive method lists every answer that it found, with
+its four shares.</p>
+<p><b>exception limit</b> (direct method): the minimum confidence an
+exception proof needs to block a default.</p>
+<p>The <b>sampling</b> row runs the sampling check (see <i>checking results
+by sampling</i>).</p>
 <p>The text field below the sampling row takes a search strategy as JSON
 and overrides the automatic strategy choice; the options are described in
-the <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/strategy_reference.md">strategy
-reference</a>.</p>
+the <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/strategy_reference.md">strategy reference</a>.</p>
       </div>
     </div>
   </div>
@@ -1515,13 +1823,12 @@ reference</a>.</p>
 every penguin is a bird. A minus sign states a negation, so the next rule
 says a penguin does not fly.</p>
 <p>The last rule is a <i>default</i>: a bird flies <i>unless</i>
-<code>-flies(X)</code> can be argued &mdash; the classical "birds normally
-fly" with its exception. An <code>unless</code> may also carry a numeric
-priority, as the later default examples do; without one the default is
-simply incomparable with explicitly ordered defaults, which this example
-does not need. The <code>query</code> statement asks the question;
-since it contains the variable <code>X</code>, gk returns each value for
-which <code>flies(X)</code> can be derived.</p>
+<code>-flies(X)</code> is established &mdash; the classical "birds normally
+fly" with its exception. An <code>unless</code> may also carry a number, the
+rank of the default, as the later default examples do; without a number the
+rank is 0. The <code>query</code> statement asks the question. It contains
+the variable <code>X</code>, so gk answers for each value of <code>X</code>
+that it finds.</p>
 <p>A percent sign <code>%</code> starts a line comment; <code>/* ... */</code>
 comments work as well. The order of statements does not matter.</p></div>
 <pre><code id="example_cs1_input_code">% Penguins are birds, penguins do not fly, birds normally fly.
@@ -1534,21 +1841,20 @@ flies(X)  :- bird(X),   unless(-flies(X)).
 
 query(flies(X)).</code></pre>
 <div id="example_cs1_proof_notes">
-<p><code>tweety</code> flies with confidence 1: the default applies and no
-argument for its exception is found. The <code>blockers</code> line records
-the exception the answer depends on. <code>pingu</code> is shown as a
-<i>rejected answer</i>: the flying default produced a candidate, but the
-strict penguin rule proves <code>-flies(pingu)</code> and defeats it &mdash;
-the rejected block shows both the candidate's proof and the proof
-against it.</p>
-<p>Each <code>proof</code> block lists numbered derivation steps.
-<code>in(frm_1)</code> marks an input statement;
-<code>mp(1.1, 2)</code> means the step was derived from steps 1 and 2 by
-<a href="https://en.wikipedia.org/wiki/Resolution_(logic)">resolution</a>
-(the decimal names the literal used). The number after each step name is the
-stored support value at that step.</p>
-<p>The internal literal <code>$ans(X)</code> collects the answer value: the
-last step of tweety's proof contains <code>$ans(tweety)</code>.</p></div>
+<p>gk lists two answers. Each row gives four shares that sum to 1:
+<i>for</i>, <i>against</i>, <i>conflict</i> and <i>ignorance</i>. The last
+column, <i>signed</i>, is for minus against.</p>
+<p><code>flies(tweety)</code> is (1, 0, 0, 0): the default applies, and
+nothing speaks against flying. <code>flies(pingu)</code> is (0, 1, 0, 0): the
+strict penguin rule establishes <code>-flies(pingu)</code>. The default says
+"unless the contrary is established", so it yields: the answer is against,
+with no conflict.</p>
+<p>gk starts from a proof and then checks it. The <i>search</i> line counts
+the nested searches: for opposition to each conclusion, for further support
+and opposition at each condition, and for each exception. The <i>raw
+output</i> shows what gk printed: one line <code>{"recursive": ...}</code>,
+then a dump of the evidence. See <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/how_gk_works.md">how gk works</a> and <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">the support semantics</a> for
+what the four shares mean.</p></div>
 
 <div id="example_cs2_input_notes"><h3>Example 2: confidences</h3>
 <p>A number between 0 and 1 before <code>::</code> is an input confidence. Facts
@@ -1564,10 +1870,13 @@ query(rain(today)).
 % There is uncertain evidence for dark clouds and an uncertain
 % rule connecting dark clouds with rain.</code></pre>
 <div id="example_cs2_proof_notes">
-<p>The answer is <code>true</code> with confidence
-<code>0.56 = 0.8 * 0.7</code>. A proof chain multiplies the input confidences of
-the statements it uses, under the assumption that their uncertainties are
-independent.</p></div>
+<p>The answer is (0.56, 0, 0, 0.44). For is <code>0.8 * 0.7 = 0.56</code>:
+the rule applies where the fact is established, and then supports rain with
+strength 0.7. Nothing speaks against rain, so the rest, 0.44, is
+ignorance.</p>
+<p>A confidence is a strength of support. For a chain without opposing
+evidence it behaves like a probability, which is why the numbers multiply
+(<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">the support semantics</a>, Section 2).</p></div>
 
 <div id="example_cs3_input_notes"><h3>Example 3: several sources</h3>
 <p>Two independent sources support the same forecast with different
@@ -1581,23 +1890,18 @@ query(rain(today)).
 % one with confidence 0.5 and the other with 0.6.
 % What is the combined support?</code></pre>
 <div id="example_cs3_proof_notes">
-<p>The combined confidence is <code>0.8</code>. For independent evidence gk
-combines the two proofs as
-<code>1 - (1 - 0.5) * (1 - 0.6) = 0.8</code>: the answer fails only if both
-sources fail. This is the same "noisy-or" rule used in probabilistic logic
-programming.</p>
-<p>The proof shows both derivations and a <code>cumul</code> step which merges
-them. Importantly, gk records the ground evidence instances used by each proof
-and accounts for shared instances during the merge: see the "shared evidence"
-example.</p></div>
+<p>The answer is (0.8, 0, 0, 0.2). Two sources give two routes to the same
+statement, and the routes combine by noisy-or:
+<code>1 - (1 - 0.5) * (1 - 0.6) = 0.8</code>. Rain fails to be established
+only where both sources fail. This is the rule of probabilistic logic
+programming too.</p>
+<p>gk finds both proofs and keeps their sources apart. A source that two
+proofs share counts once: see the "shared evidence" example.</p></div>
 
 <div id="example_cs4_input_notes"><h3>Example 4: positive and negative support</h3>
 <p>The minus sign is explicit negation: <code>-flies(tweety)</code> is
 evidence that Tweety does not fly, not an absence of evidence. Here both the
-statement and its negation have direct support. gk retains and assesses both
-polarities.</p>
-<p>The <i>detailed report</i> option (in Advanced) is switched on for this
-example: it adds a breakdown of the evidence to the answer.</p></div>
+statement and its negation have direct support, and gk keeps both.</p></div>
 <pre><code id="example_cs4_input_code">0.7::flies(tweety).
 0.4::-flies(tweety).
 
@@ -1606,17 +1910,17 @@ query(flies(tweety)).
 % Input confidences for a statement and its explicit negation:
 % confidence 0.7 for flying, 0.4 for not flying.</code></pre>
 <div id="example_cs4_proof_notes">
-<p>The answer <code>true</code> has confidence <code>0.3</code>: the positive
-support 0.7 minus the part 0.4 contested by the negative support.</p>
-<p>The detail lines split the total belief into four parts which sum to 1:</p>
-<pre><code>support: 0.3 for, 0 against
-conflict: 0.4   ignorance: 0.3</code></pre>
-<p><i>Positive support</i> and <i>negative support</i> are the unopposed
-components. <i>Conflict</i> is the component claimed by both polarities, and
-<i>ignorance</i> is claimed by neither. The <code>CONTESTED</code> flag warns
-that the answer has real negative support, not merely weak positive support.</p>
-<p>Both the <code>proof for</code> and the <code>proof against</code> are
-printed, so you can see exactly what supports each polarity.</p></div>
+<p>The answer is (0.3, 0, 0.4, 0.3): for 0.3, conflict 0.4, ignorance 0.3.
+The signed value is 0.3.</p>
+<p>The support semantics draws one number between 0 and 1 for the atom
+<code>flies(tweety)</code>. The support for flying passes when the number is
+below 0.7, the support against when it is below 0.4. Below 0.4 both pass:
+conflict, 0.4 of the worlds. Between 0.4 and 0.7 only flying passes: for,
+0.3. Above 0.7 neither passes: ignorance, 0.3 (<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">the support semantics</a>, Section
+4).</p>
+<p>Conflict and ignorance both give a signed value near 0, but they mean
+different things: conflict is evidence on both sides, ignorance is no
+evidence.</p></div>
 
 <div id="example_cs5_input_notes"><h3>Example 5: rule chains</h3>
 <p>Uncertain rules with variables act as weak general tendencies: the base
@@ -1640,19 +1944,21 @@ smokes(chris).
 
 query(smokes(sam)).</code></pre>
 <div id="example_cs5_proof_notes">
-<p>The confidence is <code>0.3764</code>. Several different derivations
-support the answer: the base tendency (0.3), and a chain through the
-friendship &mdash; sam may be susceptible (0.6), sam is a friend of chris,
-chris smokes. The friendship itself pools two sources: the known fact via
-the symmetry rule (0.9) and the general 0.1 tendency,
-<code>1 - (1 - 0.9)(1 - 0.1) = 0.91</code>. The chain then contributes
-<code>0.6 * 0.91 * 0.2 = 0.1092</code>, and the noisy-or with the base
-tendency gives <code>1 - (1 - 0.3)(1 - 0.1092) = 0.3764</code>. gk finds
-the separate proofs and cumulates them, multiplying rule confidences along each
-chain and combining the chains with the noisy-or rule, without counting the
-shared friendship evidence twice.</p>
-<p>The <code>cumul</code> steps in the proof show where alternative
-derivations are merged.</p></div>
+<p>gk gives (0.3804, 0, 0, 0.6196).</p>
+<p>The support semantics gives 0.3764 for <code>smokes(sam)</code>. One route
+is the base tendency, 0.3. The other route goes through chris: sam is
+susceptible (0.6), sam is a friend of chris (0.91), and chris smokes (1).
+The friendship pools two sources: the certain fact read through the symmetry
+rule (0.9) and the general 0.1 tendency,
+<code>1 - (1 - 0.9) * (1 - 0.1) = 0.91</code>. The influence rule then gives
+<code>0.6 * 0.91 * 0.2 = 0.1092</code>, and noisy-or with the base tendency
+gives <code>1 - (1 - 0.3) * (1 - 0.1092) = 0.3764</code>.</p>
+<p>gk's value is 0.004 higher, and gk records no reading for it. The
+difference comes from the instance of the influence rule with
+<code>Y = sam</code>, whose condition <code>smokes(sam)</code> is the
+question itself. When the rule's condition names a separate predicate for
+chris, gk gives 0.3764 exactly. Press <i>Sample</i> under Advanced: the
+reference tool gives about 0.376.</p></div>
 
 <div id="example_cs6_input_notes"><h3>Example 6: shared evidence</h3>
 <p>Two rules predict rain: one from dark clouds and falling pressure
@@ -1674,19 +1980,21 @@ query(rain_likely(today)).
 % Two rules predict rain, but both depend on the
 % same uncertain observation dark_clouds(today).</code></pre>
 <div id="example_cs6_proof_notes">
-<p>gk returns <code>0.846</code>, not 0.896. It records which input facts each
-proof uses, notices that <code>dark_clouds(today)</code> is shared, and
-combines only the non-shared parts independently:
+<p>The answer is (0.846, 0, 0, 0.154), not 0.896. Both rules need the same
+fact <code>dark_clouds(today)</code>, and a fact used twice is one piece of
+evidence. Where the clouds are established (0.9 of the worlds), rain is
+likely through either of the other two observations:
 <code>0.9 * (1 - (1 - 0.8) * (1 - 0.7)) = 0.9 * 0.94 = 0.846</code>.</p>
-<p>Replacing <code>dark_clouds(Day)</code> in the second rule with an
-independent observation with confidence 0.9 would remove the overlap and
-change the result to 0.8964.</p></div>
+<p>gk computes this case split itself: it evaluates all the evidence in one
+calculation and does not combine the two proofs as if they were
+independent. Replace <code>dark_clouds(Day)</code> in the second rule by a
+separate observation with confidence 0.9: the overlap goes, and the result
+becomes 0.8964.</p></div>
 
 <div id="example_cs7_input_notes"><h3>Example 7: contested premises</h3>
 <p>Here the conflict is not about the queried statement itself but about a
-premise used to derive it: <code>bird(tweety)</code> has positive support 0.5
-and negative support 0.2.</p>
-<p>The detailed report is switched on to show how gk flags this.</p></div>
+premise used to derive it: <code>bird(tweety)</code> has support 0.5 and
+evidence against 0.2.</p></div>
 <pre><code id="example_cs7_input_code">0.5::bird(tweety).
 0.2::-bird(tweety).
 
@@ -1697,36 +2005,26 @@ query(flies(tweety)).
 % The premise bird(tweety) is itself contested:
 % how does that affect the derived conclusion?</code></pre>
 <div id="example_cs7_proof_notes">
-<p>The conclusion gets confidence <code>0.27</code>: the flying rule (0.9)
-applied to the support of its premise that survives the opposing evidence.
-The
-<code>flags: CONTESTED</code> line marks that a premise of the proof has
-opposing evidence. That opposition need not appear in the printed answer proof:
-gk finds it with the separate directed search over the input clauses.</p>
-<p>JSON detail output can also list contested atoms as
-<code>conflict_sources</code>; see the "conflict detail" example under
-<i>more examples</i>.</p>
-<p>This example is also a good one for the <i>sampling check</i> under
-Advanced, because its modes pull in different directions. Reading each input
-confidence as an independent activation probability and counting the worlds in which
-<code>flies(tweety)</code> is provable gives about 0.45 (a finite sample
-lands nearby, for example 0.46), not 0.27: that
-count includes every world where the bird premise holds, even the worlds
-where "tweety is not a bird" holds alongside it, so the negative support for
-the premise changes nothing. The <i>shared threshold</i> mode instead arrives at
-gk's own 0.27, and not by accident: there the two bird statements compete
-for one shared acceptance threshold, so the premise counts only in the
-<code>0.5 - 0.2 = 0.3</code> margin between them &mdash; the same
-subtraction gk computes &mdash; and the flying rule fires in 0.9 of that.
-The
-difference between the first reading and gk is genuine; see <i>checking by
-sampling</i> above.</p></div>
+<p>The answer is (0.27, 0, 0, 0.73). The premise <code>bird(tweety)</code>
+has the shares (0.3, 0, 0.2, 0.5), by the rule of example 4: conflict 0.2,
+for 0.3. The flying rule can use the premise only where it is established
+without conflict, 0.3 of the worlds, and there it supports flying with
+strength 0.9: <code>0.3 * 0.9 = 0.27</code>. The evidence against the bird
+premise is no evidence against flying, so against stays 0.</p>
+<p>gk finds the opposing premise evidence by itself: after the proof of
+flying, it searches for opposition to each condition of the proof.</p>
+<p>This example shows two quantities apart. Press <i>Sample</i> under
+Advanced. The default, the support semantics, gives about 0.27. Switch the
+sampling menu to <i>clause activation</i>: each world keeps every uncertain
+statement with its confidence and asks whether the answer is provable. That
+count gives about 0.45: where the bird fact is kept, flying is provable,
+whether or not <code>-bird(tweety)</code> is kept too.</p></div>
 
 <div id="example_cs8_input_notes"><h3>Example 8: defaults</h3>
 <p>The <code>unless(-flies(X), 2)</code> condition makes this a <i>default
-rule</i>: derive <code>flies(X)</code> from <code>bird(X)</code> unless an
-argument for <code>-flies(X)</code> blocks it. The number 2 is the priority of
-the default, used when defaults compete; see the later examples.</p>
+rule</i>: derive <code>flies(X)</code> from <code>bird(X)</code> unless
+<code>-flies(X)</code> is established. The number 2 is the rank of the
+default, used when defaults compete; see the later examples.</p>
 <p>This states that birds normally fly without claiming that every bird
 flies.</p></div>
 <pre><code id="example_cs8_input_code">bird(tweety).
@@ -1739,21 +2037,19 @@ query(flies(X)).
 % Birds fly by default: the rule applies unless
 % it can be shown that the bird does not fly.</code></pre>
 <div id="example_cs8_proof_notes">
-<p>Both <code>tweety</code> and <code>robin</code> are answers with
-confidence 1: there is no support for either negation, so the
-defaults go through.</p>
-<p>Each answer records its <code>blockers</code> &mdash; the exception
-condition it depends on, e.g. <code>unless(-flies(robin), 2)</code>. The
-answer is conditional on no such blocker being derivable: gk searched for
-evidence of the exceptions and found none.</p>
-<p>Try adding the fact <code>-flies(tweety).</code> and solving again:
-<code>tweety</code> disappears from the answers, <code>robin</code>
-remains.</p></div>
+<p>Both <code>flies(tweety)</code> and <code>flies(robin)</code> are
+(1, 0, 0, 0). The default applies to both birds. gk's nested searches looked
+for <code>-flies(tweety)</code> and <code>-flies(robin)</code>, the
+exceptions, and found nothing.</p>
+<p>Add the fact <code>-flies(tweety).</code> and solve again:
+<code>flies(tweety)</code> becomes (0, 1, 0, 0). The default yields to the
+established contrary, so there is no conflict. <code>flies(robin)</code>
+stays (1, 0, 0, 0).</p></div>
 
 <div id="example_cs9_input_notes"><h3>Example 9: an exception</h3>
 <p>The new fact <code>0.9::-flies(tweety)</code> supports the default's
-exception condition and the negation of its conclusion, with confidence 0.9
-rather than 1.</p></div>
+exception, the negation of its conclusion, with confidence 0.9 rather
+than 1.</p></div>
 <pre><code id="example_cs9_input_code">bird(tweety).
 bird(robin).
 0.9::-flies(tweety).
@@ -1765,27 +2061,24 @@ query(flies(X)).
 % As before, but now evidence with confidence 0.9 says
 % that Tweety does not fly.</code></pre>
 <div id="example_cs9_proof_notes">
-<p><code>robin</code> still flies with confidence 1. For <code>tweety</code>,
-negative support 0.9 for the exception condition exceeds the default's
-surviving positive support: <code>tweety</code> is
-shown as a rejected answer with confidence against
-<code>0.9 - 0.1 = 0.8</code>. The default holds only in the one case in ten
-where the contrary evidence is absent, so 0.1 supports flying and 0.9
-supports the opposite.</p>
-<p>The output shows both the <code>proof for</code> (the default) and the
-<code>proof against</code> (the exception evidence) for
-<code>tweety</code>.</p>
-<p>Try changing <code>0.9</code> to <code>1</code>: with a certain exception
-the rejection is complete, with confidence against 1.</p></div>
+<p><code>flies(robin)</code> is still (1, 0, 0, 0).
+<code>flies(tweety)</code> is (0.1, 0.9, 0, 0): where the evidence against
+flying passes (0.9 of the worlds), the default yields and the answer is
+against. Where it fails (0.1), the default applies and supports flying. The
+signed value is <code>0.1 - 0.9 = -0.8</code>. There is no conflict: a
+default yields to its exception instead of fighting it (<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">the support semantics</a>,
+Section 6).</p>
+<p>Change <code>0.9</code> to <code>1</code>: with a certain exception the
+answer is (0, 1, 0, 0).</p></div>
 
 <div id="example_cs10_input_notes"><h3>Example 10: penguins</h3>
-<p>Two default rules compete: birds fly (priority 3) and objects do not fly
-(priority 2). Since every bird is an object, both defaults apply to every
-bird. The higher priority number wins, so for ordinary birds the flying
-default defeats the non-flying one.</p>
+<p>Two default rules compete: birds fly (rank 3) and objects do not fly
+(rank 2). Every bird is an object, so both defaults apply to every bird. The
+higher rank wins, so for ordinary birds the flying default defeats the
+non-flying one.</p>
 <p>The penguin rule <code>-flies(X) :- penguin(X)</code> has no
-<code>unless</code>: it is strict, and strict conclusions override any
-default.</p></div>
+<code>unless</code>: it is strict, and a default yields to what a strict rule
+establishes.</p></div>
 <pre><code id="example_cs10_input_code">bird(tweety).
 penguin(pingu).
 
@@ -1801,18 +2094,16 @@ query(flies(X)).
 % Birds fly, penguins are birds, penguins
 % do not fly. Also: objects in general do not fly.</code></pre>
 <div id="example_cs10_proof_notes">
-<p>The bird <code>tweety</code> flies with confidence 1: its priority-3
-default defeats the priority-2 object default (the printed
-<code>proof against</code> shows the defeated attempt).</p>
-<p>The penguin <code>pingu</code> is printed as a <i>rejected answer</i> with
-confidence against 1: the flying default produced a candidate, but the strict
-penguin rule defeats it regardless of priorities.</p>
-<p>The rejected-answer block records the defeated candidate and its opposing
-proof.</p></div>
+<p><code>flies(tweety)</code> is (1, 0, 0, 0): both defaults apply to
+tweety, and the rank-3 flying default wins against the rank-2 object
+default.</p>
+<p><code>flies(pingu)</code> is (0, 1, 0, 0): the strict penguin rule
+establishes <code>-flies(pingu)</code>, and the flying default yields to it,
+whatever its rank.</p></div>
 
 <div id="example_cs11_input_notes"><h3>Example 11: the Nixon diamond</h3>
-<p>Two defaults of <i>equal</i> priority support opposite conclusions about
-the same person: the quaker rule supports pacifism and the republican rule
+<p>Two defaults of <i>equal</i> rank support opposite conclusions about the
+same person: the quaker rule supports pacifism and the republican rule
 supports its negation.</p>
 <p>The query asks about a further consequence of pacifism.</p></div>
 <pre><code id="example_cs11_input_code">quaker(nixon).
@@ -1828,15 +2119,12 @@ query(dislikeswar(X)).
 % Quakers are pacifists; republicans are not.
 % Nixon is both. Does he dislike war?</code></pre>
 <div id="example_cs11_proof_notes">
-<p>gk reports <code>result: evidence below limit</code> and shows
-<code>nixon</code> only as a rejected answer with confidence against 0 and
-the <code>CONTESTED</code> flag. Neither default can defeat the other
-&mdash; the priorities are equal &mdash; so the margin between them is zero:
-gk commits to neither <code>pacifist(nixon)</code> nor its negation, and the
-downstream conclusion is left undecided (ignorance 1 in the detail
-lines).</p>
-<p>Try raising the quaker default to priority 3: then pacifism wins and
-<code>nixon</code> becomes a real answer with confidence 1.</p></div>
+<p><code>dislikeswar(nixon)</code> is (0, 0, 0, 1): complete ignorance.
+Both defaults apply, and neither has the higher rank, so neither wins:
+<code>pacifist(nixon)</code> is not established either way, and its
+consequence has no support (<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">the support semantics</a>, Section 6).</p>
+<p>Raise the quaker default to rank 3: pacifism wins, and
+<code>dislikeswar(nixon)</code> becomes (1, 0, 0, 0).</p></div>
 
 <div id="example_cs12_input_notes"><h3>Example 12: where is John</h3>
 <p>Three movements happen one after another: John to the hallway, Mary to
@@ -1877,22 +2165,21 @@ moved(Person, Old) :-
 % Where is John after his second movement?
 query(at(john, Place, s3)).</code></pre>
 <div id="example_cs12_proof_notes">
-<p>The answer is <code>kitchen</code> with confidence 1, straight from the
+<p><code>at(john, kitchen, s3)</code> is (1, 0, 0, 0), straight from the
 movement rule.</p>
-<p><code>hallway</code> appears as a <i>rejected answer</i>: John's hallway
-location persisted through Mary's movement into <code>s2</code> (nobody
-named John moved then), but his own move from <code>s2</code> to
-<code>s3</code> establishes <code>moved(john, s2)</code>, which defeats the
-persistence default for that step. The rejected block shows the whole
-persistence chain with its two <code>unless</code> blockers.</p>
-<p>Steps such as <code>mp(1.1, 4)</code> use a decimal to name which
-literal of the earlier clause was resolved: the first literal of step 1.</p>
-<p>Try deleting only the line <code>move(john, kitchen, s2, s3).</code>,
-keeping <code>next(s2, s3).</code>: then <code>hallway</code> becomes a real
-answer at <code>0.99 * 0.99 = 0.9801</code>, the persistence default applied
-twice. (Deleting the <code>next</code> line as well would remove the
-transition to <code>s3</code> altogether, and the query would have no
-answers.)</p></div>
+<p><code>at(john, hallway, s3)</code> is (0, 0, 0, 1). John's hallway
+location persists through Mary's movement into <code>s2</code>, because
+nobody named John moved then. But John's own move from <code>s2</code> to
+<code>s3</code> establishes <code>moved(john, s2)</code>, the exception of
+the persistence default for that step. So nothing supports the hallway at
+<code>s3</code>, and gk lists the candidate with ignorance 1.</p>
+<p>The search line reports some proof steps that gk did not turn into
+applications, and one proof application: gk keeps such a proof with its
+confidence as one piece of evidence (<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/recursive_output.md">the output</a>, Section 4).</p>
+<p>Delete only the line <code>move(john, kitchen, s2, s3).</code>, keeping
+<code>next(s2, s3).</code>: then <code>at(john, hallway, s3)</code> becomes
+(0.9801, 0, 0, 0.0199), the persistence default applied twice,
+<code>0.99 * 0.99 = 0.9801</code>.</p></div>
 
 <div id="example_cs13_input_notes"><h3>Example 13: arithmetic</h3>
 <p>Ground arithmetic (<code>3 + 4 &lt; 10</code> etc) is evaluated during
@@ -1914,14 +2201,18 @@ query(boxes_needed(Boxes)).
 % 42 books? Note the strategy field under Advanced: it
 % shows the arithmetic setting used to find a value for Boxes.</code></pre>
 <div id="example_cs13_proof_notes">
-<p>The answer is <code>7</code> with confidence 0.8 (the rule's own
-confidence). The proof shows the instantiation step where
-<code>Boxes = 7</code> makes <code>7 * 6 = 42</code> true.</p>
+<p>The answer <code>boxes_needed(7)</code> is (0.8, 0, 0, 0.2): the rule's
+own confidence. gk's proof uses an arithmetic instance, <code>Boxes =
+7</code>, which makes <code>7 * 6 = 42</code> true. gk keeps a proof step of
+this kind as one proof application with the proof's confidence: the search
+line counts it.</p>
 <p>This is bounded search for satisfying values, not equation solving: it
 handles one unknown conservatively (<code>arith_instantiation: 1</code>), and
 mode 2 also tries selected two-variable cases. The rule encodes exact
 equality, not capacity: with 43 books no value of <code>Boxes</code>
-satisfies it, and there is no answer.</p></div>
+satisfies it, and there is no answer.</p>
+<p>The reference tool of the <i>Sample</i> button declines this input: it
+does not read equality.</p></div>
 
 <div id="example_cs14_input_notes"><h3>Example 14: equality reasoning</h3>
 <p>The first fact defines a <i>function value</i>: the capital of Estonia is
@@ -1939,18 +2230,21 @@ query(lives_in(alice, tallinn)).
 % The two names denote the same city, so the
 % question follows by equality rewriting.</code></pre>
 <div id="example_cs14_proof_notes">
-<p>The answer is <code>true</code> with confidence 1. The <code>=</code>
-step in the proof is an equality replacement: <code>capital(estonia)</code>
-inside the second fact is rewritten to <code>tallinn</code>, after which the
-question matches directly.</p></div>
+<p>The answer is (1, 0, 0, 0). gk's proof rewrites
+<code>capital(estonia)</code> inside the second fact to <code>tallinn</code>,
+after which the question matches directly.</p>
+<p>The reference tool of the <i>Sample</i> button declines this input: it
+does not read equality.</p></div>
 
-<div id="example_cs15_input_notes"><h3>Example 15: conflict sources in detail</h3>
-<p>Several sources give evidence about whether <code>tweety</code> is a bird
-&mdash; two positive sightings and one negative report. One rule supports flying from
-birdness; the other supports not flying from evidence that something is not
-a bird. The detailed report (switched on for this
-example) names which atom the conflict comes from. Note that input confidences can
-also be written as percentages: <code>90</code> means 0.9.</p></div>
+<div id="example_cs15_input_notes"><h3>Example 15: the evidence in detail</h3>
+<p>Several sources give evidence about whether <code>tweety</code> is a bird:
+two positive sightings and one negative report. One clause supports flying
+from birdness; the other supports not flying from evidence that something is
+not a bird. Both clauses are written as disjunctions, so gk may use them in
+either direction. Input confidences can also be written as percentages:
+<code>90</code> means 0.9.</p>
+<p>The <i>detailed report</i> (in Advanced) is switched on for this example:
+it lists the evidence gk collected.</p></div>
 <pre><code id="example_cs15_input_code">[
 {"@name":"sighting1","@confidence":90,"@logic":["bird","tweety"]},
 {"@name":"sighting2","@confidence":80,"@logic":["bird","tweety"]},
@@ -1960,12 +2254,23 @@ also be written as percentages: <code>90</code> means 0.9.</p></div>
 {"@name":"q","@question":["flies","?:X"]}
 ]</code></pre>
 <div id="example_cs15_proof_notes">
-<p>The answer has confidence <code>0.252</code> and its detail block lists</p>
-<pre><code>"conflict_sources": [{"atom": ["bird","tweety"], "conflict": 0.7000}]</code></pre>
-<p>naming the contested premise and the size of the conflict on it: the two
-sightings of <code>bird(tweety)</code> cumulate to 0.98, the doubt claims
-0.7 of that mass. The <code>CONTESTED</code> flag and the conflict-source
-list identify the affected premise.</p></div>
+<p>The answer is (0.252, 0, 0, 0.748). The two sightings pool to
+<code>1 - (1 - 0.9) * (1 - 0.8) = 0.98</code> for
+<code>bird(tweety)</code>, and the doubt gives 0.7 against. By the rule of
+example 4 the premise is in conflict in 0.7 of the worlds and established
+in 0.28. The flying clause gives <code>0.28 * 0.9 = 0.252</code>. Not flying
+would need <code>-bird(tweety)</code> established without conflict, which
+never happens, so against is 0.</p>
+<p>The table of evidence lists the applications: one use of one input
+clause each. A row <code>$src_e5(tweety)</code> is a <i>source event</i>:
+the clause <code>only_birds_fly</code> is used in two directions,
+<code>bird(tweety)</code> from <code>flies(tweety)</code> and
+<code>-flies(tweety)</code> from <code>-bird(tweety)</code>, and both uses
+share the one event that the clause is in force.</p>
+<p>The two directions make a loop across signs between
+<code>bird(tweety)</code> and <code>flies(tweety)</code>. gk evaluates such
+a loop with a <i>cycle cut</i>, which the readings list names. Here the cut
+leaves the semantics' value: <i>Sample</i> gives about 0.252.</p></div>
 
 <div id="example_cs16_input_notes"><h3>Example 16: JSON notation</h3>
 <p>The weather example is written in gk's
@@ -1980,9 +2285,9 @@ as <code>@confidence</code> and <code>@question</code> attach metadata.</p>
   {"@question": ["rain", "today"]}
 ]</code></pre>
 <div id="example_cs16_proof_notes">
-<p>When the input is JSON, the output is JSON as well: machine-readable
-answers with the same proofs as in the text format. Confidence 0.56 matches
-example 2 because the two inputs encode the same statements.</p></div>
+<p>The answer is (0.56, 0, 0, 0.44), as in example 2: the two inputs state
+the same statements. gk converts every input notation to JSON-LD-LOGIC
+before it searches.</p></div>
 
 <div id="example_cs17_input_notes"><h3>Example 17: GKS notation</h3>
 <p>The third input notation: rules are written premises-first with
@@ -1998,8 +2303,8 @@ notations work in this same text box.</p></div>
 
 query(rain(today)).</code></pre>
 <div id="example_cs17_proof_notes">
-<p>The answer is true with confidence 0.56, as in examples 2 and 16. All
-three inputs are translated to the same internal logic before proof search.</p></div>
+<p>The answer is (0.56, 0, 0, 0.44), as in examples 2 and 16. All three
+inputs are translated to the same internal logic before the search.</p></div>
 
 <div id="example_cs18_input_notes"><h3>Example 18: TPTP notation</h3>
 <p>gk also reads clause-normal-form problems in the
@@ -2039,18 +2344,26 @@ cnf(birds_fly, axiom,
 cnf(who_does_not_fly, conjecture,
     ( ~ flies(X) ) ).</code></pre>
 <div id="example_cs18_proof_notes">
-<p>With TPTP input the answer comes back in the TPTP style: an
-<code>SZS status</code> line, the answer tuple, and the proofs as inference
-lists. The penguin <code>p</code> is the answer at confidence
-<code>0.72 - 0.08 = 0.64</code>: the no-fly rule applies through the 0.8
-penguin fact (<code>0.8 * 0.9 = 0.72</code> for not flying), while the
-flying default supports the opposite only in the 0.08 where the penguin is
-a bird but the no-fly rule does not apply.</p>
-<p>The output notation follows the input notation.</p>
-<p>This example rewards a look with the <i>sampling check</i> under
-Advanced: counting the worlds in which <code>-flies(p)</code> is provable,
-minus those in which <code>flies(p)</code> is, gives about the same 0.64;
-see <i>checking by sampling</i> above.</p></div>
+<p>gk gives <code>-flies(p)</code> (0.72, 0, 0, 0.28), with the reading
+<code>cycle cut</code>. For is <code>0.8 * 0.9 = 0.72</code>: the penguin
+fact and the no-fly clause.</p>
+<p>The support semantics gives (0.722, 0.077, 0, 0.201). Where
+<code>p</code> is a penguin but the no-fly clause is not in force (about
+0.08 of the worlds), <code>p</code> is a bird, the flying default applies,
+and flying counts against the answer. gk does not see this part. The
+flying default's exception is <code>-flies(p)</code>, the question atom
+itself, and the no-fly clause read backwards turns flying into evidence
+against the penguin fact. So the evidence forms loops through the default
+and across signs. gk evaluates such loops with a <i>cycle cut</i>: walking
+from the question, it removes the application that leads back. Here the cut
+removes the flying default's support, and against becomes 0.</p>
+<p>Press <i>Sample</i> under Advanced to see the difference: the reference
+tool computes the support semantics by sampling worlds and shows both
+values side by side (<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/mcref.md">the reference tool</a>).</p>
+<p>The reading <code>self exception</code> names a use of the flying clause
+whose exception is its own condition, <code>-bird(p)</code> from
+<code>-flies(p)</code> unless <code>-flies(p)</code>: such a use never
+applies, in gk and in the semantics.</p></div>
 
 <div id="example_cs19_input_notes"><h3>Example 19: defaults in JSON</h3>
 <p>The birds-and-penguins default in JSON notation. What GKP writes as
@@ -2082,10 +2395,9 @@ flies(X) :- bird(X), unless(-flies(X), 3).
 query(flies(b1)).
 */</code></pre>
 <div id="example_cs19_proof_notes">
-<p><code>b1</code> flies (confidence 1); the answer lists its
-<code>$block</code> blocker just as the text format lists
-<code>blockers:</code>. Programs generating JSON-LD-LOGIC use this form
-directly.</p></div>
+<p><code>flies(b1)</code> is (1, 0, 0, 0): <code>b1</code> is a bird, and
+nothing establishes that it does not fly. Programs that generate
+JSON-LD-LOGIC write defaults in this form directly.</p></div>
 
 <div id="example_cs20_input_notes"><h3>Example 20: blocks-world planning</h3>
 <p>A classical planning problem: blocks on a table, a robot arm, and a goal
@@ -2093,8 +2405,10 @@ configuration. The plan is found as the answer term: a nested sequence of
 <code>pickup</code>/<code>putdown</code> actions transforming the initial
 situation.</p>
 <p>The time limit is preset to 30 seconds and max answers to 1 (one plan).
-The search runs off the page's main thread, so the page stays responsive;
-press Stop to abort it.</p></div>
+gk's first proof search gets a quarter of the budget, and finding the plan
+takes several seconds of it; with a shorter limit the plan is not found. The
+search runs off the page's main thread, so the page stays responsive; press
+Stop to abort it.</p></div>
 <pre><code id="example_cs20_input_code">% Blocks-world planning with situation terms and frame axioms.
 % Adapted from GKC's Examples/blocks.txt: goal(State) replaces the reserved
 % $ans(State) literal, and query(goal(State)) asks gk for a plan.
@@ -2182,16 +2496,20 @@ holds(clear(Z),do(putdown(X,Y),State))
 
 query(goal(State)).</code></pre>
 <div id="example_cs20_proof_notes">
-<p>The answer is a situation term: read it inside-out, starting from
-<code>s0</code>, as the sequence of actions of the plan. Decoded, the
-returned plan is:</p>
+<p>The answer is a situation term, with (1, 0, 0, 0): every clause is
+certain. Read the term inside-out, starting from <code>s0</code>, as the
+sequence of actions of the plan:</p>
 <ol>
 <li>pick up <code>b</code></li>
 <li>put <code>b</code> on <code>a</code></li>
 <li>pick up <code>c</code></li>
 <li>put <code>c</code> on <code>b</code></li>
 </ol>
-<p>Finding the first plan takes several seconds.</p></div>
+<p>The whole run takes about 20 seconds. After the plan, gk checks it: the
+nested searches look for opposition to the steps of the proof until the
+budget is spent, and the search line reports the ones cut by their time
+allowance. With certain clauses and no negative facts they find nothing,
+so the value stays (1, 0, 0, 0).</p></div>
 
 <div id="example_cs21_input_notes"><h3>Example 21: logic generated from English</h3>
 <p>The input was machine-generated by the
@@ -2243,23 +2561,33 @@ are part of the llmpipe encoding scheme, not something gk requires.</p></div>
 {"@name": "frm_syn", "@logic": [["-has type", "?:E", "fly", "?:Fv31"], ["has type", "?:E", "go", "?:Fv31"]], "@confidence": 0.52, "@nl": "[generated: frm_syn]"}
 ]</code></pre>
 <div id="example_cs21_proof_notes">
-<p>The expected answer is <code>false</code>: John, a penguin, does not fly.
-The "birds can fly" sentence became a default (note the <code>$block</code>
-in its clause and its 0.9 confidence) which the strict penguin sentence
-defeats, exactly the penguin pattern from the earlier examples &mdash; only
-now produced automatically from English text.</p></div>
+<p>The answer is "the question" with (0, 1, 0, 0): against 1. John, a
+penguin, does not fly. The "birds can fly" sentence became a default (note
+the <code>$block</code> in its clause and its 0.9 confidence), and the
+strict "penguins cannot fly" sentence establishes the contrary, so the
+default yields: the penguin pattern of example 10, now produced
+automatically from English text.</p>
+<p>The readings list <code>cycle cut</code>: the strict penguin sentence,
+read backwards, connects the default's atoms in loops across signs, and gk
+evaluates such loops with a cut. The search line reports nested searches cut
+by their allowance in the large background knowledge base; the value comes
+from the evidence found within the budget.</p></div>
 
 <div id="example_cs22_input_notes"><h3>Example 22: a which-question from English</h3>
 <p>A wh-question produced by the same
 <a href="https://github.com/tammet/nlpsolver/tree/main/llmpipe">llmpipe</a>
 English-to-logic pipeline; the displayed clauses are the generated ones,
-with the shared background axioms loaded behind the scenes. The answer
-value comes back wrapped in <code>$ans</code>: a name like
-<code>#:John 1</code> is a specific individual mentioned in the text, while a
-value like <code>$some_fox</code> is an existential one &mdash; "a fox",
-introduced by the text without a name. The <code>$ctxt</code> terms carry
-the context an atom is asserted in (tense, world, location, knowledge
-source), as in the previous example.</p></div>
+with the shared background axioms loaded behind the scenes. The question is
+defined by the <code>$defq0</code> clauses, so the answer comes back as
+<code>$defq0(...)</code> with its value: a name like <code>#:John 1</code>
+is a specific individual mentioned in the text, while a value like
+<code>$some_fox</code> is an existential one &mdash; "a fox", introduced by
+the text without a name. The <code>$ctxt</code> terms carry the context an
+atom is asserted in (tense, world, location, knowledge source), as in the
+previous example.</p>
+<p>The time limit is preset to 10 seconds: in the browser, gk's first proof
+search needs more than a quarter of a 5-second budget to find the
+answer.</p></div>
 <pre><code id="example_cs22_input_code">// Squirrels can fly. Foxes cannot fly. Squirrels and foxes are animals. Which animal cannot fly?
 // Expected answer: A fox
 // Uses the shared background knowledge base axioms_std.js.
@@ -2293,23 +2621,24 @@ source), as in the previous example.</p></div>
 {"@name": "frm_syn", "@logic": [["-has type", "?:E", "fly", "?:Fv43"], ["has type", "?:E", "go", "?:Fv43"]], "@confidence": 0.52, "@nl": "[generated: frm_syn]"}
 ]</code></pre>
 <div id="example_cs22_proof_notes">
-<p>The answer is <code>$some_fox</code>, with confidence 1: an unnamed fox
-introduced as a representative member of its class. Population clauses
-(marked <code>@sourcetype: "populate"</code>) supply such typical members
-for the classes mentioned in the text, so that questions about "a fox" or
-"some bird" have witnesses to find.</p></div>
+<p>The answer is <code>$defq0($some_fox)</code> with (1, 0, 0, 0): an
+unnamed fox, introduced as a representative member of its class. Population
+clauses (marked <code>@sourcetype: "populate"</code>) supply such typical
+members for the classes mentioned in the text, so that questions about "a
+fox" or "some bird" have witnesses to find. The run takes about 7
+seconds.</p></div>
 
 <div id="example_cs23_input_notes"><h3>Example 23: taxonomy classification</h3>
 <p>Three objects with known parts: <code>h1</code> has a leg, <code>b1</code>
 has a leg, a wing and feathers, <code>a1</code> has an engine and a wing.
 Uncertain default rules classify by parts; the question asks which objects
 are organisms.</p>
-<p>The defaults here use <code>tax(class)</code> instead of a numeric
-priority: the priority is looked up from a WordNet-derived taxonomy, in which
-a more specific class defeats a more general one. The taxonomy comes from two
-data files (a mapping of names to class numbers and the packed class
-hierarchy), fetched gzipped (about 0.9 MB) and loaded automatically for this
-example; gk then runs with its <code>-defaults</code> option.</p></div>
+<p>The defaults here use <code>tax(class)</code> instead of a numeric rank:
+the rank is looked up from a WordNet-derived taxonomy, in which a more
+specific class defeats a more general one. The taxonomy comes from two data
+files (a mapping of names to class numbers and the packed class hierarchy),
+fetched gzipped (about 0.9 MB) and loaded automatically for this example;
+gk then runs with its <code>-defaults</code> option.</p></div>
 <pre><code id="example_cs23_input_code">% Classify three objects: h1 (likely human), b1 (likely bird),
 % a1 (likely airplane). Question: which objects are organisms?
 
@@ -2338,21 +2667,129 @@ isa(X, organism)  :- isa(X, bird).
 
 query(isa(X, organism)).</code></pre>
 <div id="example_cs23_proof_notes">
-<p><code>b1</code> is an organism with confidence <code>0.5552</code>: the
-bird evidence from leg, wing and feathers cumulates to 0.936, the
-independent human evidence (0.3, from the leg) joins it &mdash;
-<code>1 - (1 - 0.936)(1 - 0.3) = 0.9552</code> &mdash; and the opposing
-airplane default (0.4, from the wing) subtracts from that:
-<code>0.9552 - 0.4 = 0.5552</code>. The answer is
-reported through both its human-default and bird-default derivations, with
-the <code>tax(...)</code> blockers listed. Each block is one derivation
-family, and every block is headed by the same aggregate confidence &mdash;
-not by the share contributed by the proof shown inside it.</p>
-<p><code>h1</code> follows with confidence <code>0.44</code>: the human (0.3)
-and bird (0.2) leg-defaults cumulate to <code>1 - 0.7 * 0.8 = 0.44</code>.</p>
-<p><code>a1</code> is a rejected answer with confidence against 1: the wing
-suggested a bird, but the strict rule that nothing with an engine is an
-organism defeats the default regardless of taxonomy priorities.</p></div>
+<p>gk lists two answers. <code>isa(b1, organism)</code> is (0.5731, 0.0179,
+0.3821, 0.0269). The support for organism is 0.9552: the bird evidence from
+leg, wing and feathers pools to
+<code>1 - 0.8 * 0.4 * 0.2 = 0.936</code>, and the human evidence from the
+leg joins it, <code>1 - (1 - 0.936) * (1 - 0.3) = 0.9552</code>. The airplane
+default (0.4, from the wing) and the strict rule "an airplane is not an
+organism" give 0.4 against. For plus conflict is 0.9552, against plus
+conflict is 0.4.</p>
+<p><code>isa(a1, organism)</code> is (0, 0.4, 0.6, 0): the strict engine
+rule gives 1 against, the bird default from the wing gives 0.6 for, and
+where both pass the result is conflict, 0.6.</p>
+<p>Three remarks. First, the certain rules are read in both directions: "a
+bird is an organism" also says that what is not an organism is not a bird.
+This makes the defaults' exceptions depend on the organism question itself,
+a loop through exceptions, and gk evaluates it with a <i>cycle cut</i>.
+With equal numeric ranks in place of the <code>tax(...)</code> ranks, the
+reference tool gives b1 and h1 within its sampling error of gk's values, but
+a1 (0, 1, 0, 0): the engine makes a1 not an organism, hence not a bird, and
+the bird default yields. The cut drops that exception. Second, gk's first
+proof search with the default strategy does not find <code>h1</code>; with
+the strategy <code>{"strategy":["query_focus"],"query_preference":1}</code>
+gk lists <code>isa(h1, organism)</code> (0.44, 0, 0, 0.56) and b1, but not
+a1. Third, the recursive method reads a taxonomy rank as rank 0; here no two
+defaults of opposite signs compete on one atom, so the ranks do not change
+the value. The reference tool declines <code>tax(...)</code> ranks.</p></div>
+
+<div id="example_cs24_input_notes"><h3>Example 24: Tweety, layer 1 &mdash; an uncertain exception</h3>
+<p>Examples 24 to 27 build one question in layers: does Tweety fly? Tweety
+is a bird. Birds normally fly, with confidence 0.9. Penguins normally do not,
+and the penguin default has the higher rank, 3. Tweety is a seabird with
+confidence 0.8, and a rule supports that a seabird is a penguin with
+confidence 0.7.</p></div>
+<pre><code id="example_cs24_input_code">bird(tweety).
+0.9::flies(X) :- bird(X), unless(-flies(X), 2).
+-flies(X) :- penguin(X), unless(flies(X), 3).
+0.8::seabird(tweety).
+0.7::penguin(X) :- seabird(X).
+query(flies(tweety)).</code></pre>
+<div id="example_cs24_proof_notes">
+<p>The answer is (0.396, 0.56, 0, 0.044). Penguin has support
+<code>0.8 * 0.7 = 0.56</code>. Where it is established, the penguin default
+wins by rank, and the answer is against. In the remaining 0.44 the flying
+default applies: <code>0.44 * 0.9 = 0.396</code> for. The rest, 0.044, is
+ignorance (<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">the support semantics</a>, Section 10).</p></div>
+
+<div id="example_cs25_input_notes"><h3>Example 25: Tweety, layer 2 &mdash; a disjunction</h3>
+<p>The 0.7 penguin rule is replaced by a classical disjunction, "a seabird
+is a gull or a penguin", and by evidence against gull with confidence 0.7.
+The disjunction alone establishes neither species.</p></div>
+<pre><code id="example_cs25_input_code">bird(tweety).
+0.9::flies(X) :- bird(X), unless(-flies(X), 2).
+-flies(X) :- penguin(X), unless(flies(X), 3).
+gull(X) ; penguin(X) :- seabird(X).
+0.8::seabird(tweety).
+0.7::-gull(tweety).
+query(flies(tweety)).</code></pre>
+<div id="example_cs25_proof_notes">
+<p>The answer is again (0.396, 0.56, 0, 0.044). The disjunction and the
+evidence against gull give a route to <code>penguin(tweety)</code>:
+<code>0.8 * 0.7 = 0.56</code>, as in layer 1. gk's proof uses the
+disjunction in the direction "a seabird that is not a gull is a
+penguin".</p></div>
+
+<div id="example_cs26_input_notes"><h3>Example 26: Tweety, layer 3 &mdash; evidence against a premise</h3>
+<p>A report of a yellow bill (confidence 0.6) and a rule that supports gull
+for seabirds with yellow bills (confidence 0.9) are added.</p></div>
+<pre><code id="example_cs26_input_code">bird(tweety).
+0.9::flies(X) :- bird(X), unless(-flies(X), 2).
+-flies(X) :- penguin(X), unless(flies(X), 3).
+gull(X) ; penguin(X) :- seabird(X).
+0.8::seabird(tweety).
+0.7::-gull(tweety).
+0.9::gull(X) :- seabird(X), yellow_bill(X).
+0.6::yellow_bill(tweety).
+query(flies(tweety)).</code></pre>
+<div id="example_cs26_proof_notes">
+<p>The answer is (0.6984, 0.224, 0, 0.0776). The new evidence speaks for
+gull, so it contests the premise <code>-gull(tweety)</code> inside the
+penguin proof. Where seabird and yellow bill are established, gull has
+support 0.9 for and 0.7 against: below 0.7 both pass (conflict), between
+0.7 and 0.9 gull is established. In those worlds <code>-gull(tweety)</code>
+is no usable premise. Penguin now needs the seabird and the negative gull
+evidence without a usable yellow bill:
+<code>0.8 * 0.7 * (1 - 0.6) = 0.224</code>, and flying gets
+<code>(1 - 0.224) * 0.9 = 0.6984</code>.</p>
+<p>gk reaches this in three steps. The first proof gives (0.9, 0, 0, 0.1).
+The search for opposition to flying finds the penguin default: (0.396, 0.56,
+0, 0.044). The search for opposition to the premise
+<code>-gull(tweety)</code> finds the yellow-bill rule: (0.6984, 0.224, 0,
+0.0776). The last discovery is not another proof of flying: it changes the
+state of a premise inside the opposing proof (<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/how_gk_works.md">how gk works</a>, Section
+5).</p>
+<p>The proofs show this as well. The default proof against flying has the
+confidence 0.56 (seabird 0.8 and not gull 0.7), although the against share
+is only 0.224: the proof gives the main structure of the reasoning, not the
+sub-proofs of the nested searches. Check <i>full proofs</i> under Advanced
+and solve again: the proof of <code>gull(tweety)</code> from the yellow bill
+(confidence 0.432) appears inside the proof against, under the step whose
+search found it.</p></div>
+
+<div id="example_cs27_input_notes"><h3>Example 27: Tweety, layer 3b &mdash; a certain gull rule</h3>
+<p>As layer 3, but the gull rule is certain. A certain rule without
+exceptions is classical: gk may use it in every direction. With not-gull and
+seabird it supports not-yellow-bill, and with not-gull and yellow bill it
+supports not-seabird.</p></div>
+<pre><code id="example_cs27_input_code">bird(tweety).
+0.9::flies(X) :- bird(X), unless(-flies(X), 2).
+-flies(X) :- penguin(X), unless(flies(X), 3).
+gull(X) ; penguin(X) :- seabird(X).
+0.8::seabird(tweety).
+0.7::-gull(tweety).
+gull(X) :- seabird(X), yellow_bill(X).
+0.6::yellow_bill(tweety).
+query(flies(tweety)).</code></pre>
+<div id="example_cs27_proof_notes">
+<p>The answer is again (0.6984, 0.224, 0, 0.0776), with two readings
+<code>cycle cut</code>. The three atoms <code>seabird</code>,
+<code>yellow_bill</code> and <code>gull</code> now form a loop across
+signs. The support semantics evaluates the loop by narrowing: where the three
+input facts pass, all three atoms end in conflict, none supplies a usable
+premise, and the penguin proof fails there. gk cuts the loop instead; on
+this input the cut leaves the semantics' value. <i>Sample</i> shows the same
+numbers within its sampling error.</p></div>
 
 </div><!-- /hidden examples -->
 
@@ -2377,6 +2814,9 @@ gid('files').addEventListener('change', handleFileSelect, false);
 // very first Solve showed a proof with no explanation beneath.
 gid('select_example').value = '1';
 selectExample('simple');
+// a browser may restore the method select from an earlier visit: make the
+// exception-limit field follow it
+methodChanged();
 </script>
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/js/bootstrap.min.js"></script>

@@ -263,20 +263,27 @@ Contents:
 The <a href="commonsense.html">Reasoning under uncertainty page</a> runs the
 gk reasoner in the browser. gk extends first-order predicate logic with numeric
 confidences, explicit negation, defaults and exceptions, and tolerance of
-contradictory evidence. It assesses positive and negative support separately
-and reports the result together with proofs.
+contradictory evidence. For a question it reports four shares (support for
+the statement, support against it, conflict and ignorance) under the support
+semantics, together with the resolution proofs for and against the answer.
+A sampling check compares gk's value with the reference tool mcref, which
+computes the same semantics by sampling worlds.
 <p>
 The browser version runs locally using WebAssembly. Native versions and
 further documentation are available from the
 <a href="download.html">download page</a> and the
 <a href="https://github.com/tammet/gkreasoner">gkreasoner repository</a>:
 <ul>
-  <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/input_languages.md">Input-language reference</a></li>
+  <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">The support semantics</a></li>
   <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/how_gk_works.md">How gk works</a></li>
+  <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/recursive_output.md">The output and the proofs</a></li>
+  <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/mcref.md">The reference tool mcref</a></li>
+  <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/input_languages.md">Input-language reference</a></li>
   <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/strategy_reference.md">Strategy reference</a></li>
   <li>
-    Research papers:
-    <a href="https://arxiv.org/abs/2608.09190">uncertainty propagation and proof structure (2026)</a>
+    Research papers: the support semantics and the recursive method are in a
+    paper in preparation (2026). Older versions of gk:
+    <a href="https://arxiv.org/abs/2608.09190">uncertainty propagation and proof structure (2026, the direct method)</a>
     &middot;
     <a href="https://link.springer.com/chapter/10.1007/978-3-031-10769-6_18">defaults and exceptions (2022)</a>
     &middot;

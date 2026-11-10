@@ -2,9 +2,9 @@
 // of commonsense_check.js: it drives the SAME worker code that
 // commonsense.html runs in the browser, through the same messages.
 //
-//   /opt/gkcjs/emsdk/node/12.18.1_64bit/bin/node mc_check.js           (all)
-//   /opt/gkcjs/emsdk/node/12.18.1_64bit/bin/node mc_check.js 3 7 10    (some)
-//   MC_TRIALS=300 ... mc_check.js                    (fewer worlds, quicker)
+//   node mc_check.js                      (all; node 16 or later)
+//   node mc_check.js 3 7 10               (some)
+//   MC_TRIALS=300 node mc_check.js        (fewer worlds, quicker)
 //
 // One process = one solver instance, exactly as one Web Worker is on the
 // page. When the worker hands a job back unfinished (see the retirement note
@@ -13,7 +13,7 @@
 // under test rather than around it.
 //
 // The expectations are the reference values of the Python implementation in
-// /opt/gkreasoner/montecarlo (gkmc.py at 4000 trials, threshold_worlds.py at
+// montecarlo/ of https://github.com/tammet/gkreasoner (gkmc.py at 4000 trials, threshold_worlds.py at
 // 100000 draws, seed 1), NOT gk's own confidences: the point of sampling is
 // to be an independent check, and it is expected to differ from gk on some
 // examples. Inclusion estimates are compared by interval overlap, the four
@@ -49,7 +49,8 @@ var SEED = 0;
 //   number to match".
 // thr: the Python four components [positive, negative, conflict, ignorance].
 // refuse / thrRefuse: internal fields for the exact unsupported-case message.
-// gk: gk's own confidence per answer, checked against the reference run.
+// gk: gk's own value per answer (gk 1.2.4, the recursive method: for - against),
+//   checked against the reference run.
 
 var EXAMPLES = {
   // ex1: everything is certain, so every sampled world is the whole program;
@@ -78,10 +79,12 @@ var EXAMPLES = {
   "15": { incl: { "tweety": null } },
   "16": { incl: { "yes": 0.56 }, thr: [0.56, 0, 0, 0.44], gk: { "yes": 0.56 } },
   "17": { incl: { "yes": 0.56 }, thr: [0.56, 0, 0, 0.44], gk: { "yes": 0.56 } },
-  // ex18 asks which bird does NOT fly: p is the answer at 0.64, and the
-  // sampled net over the worlds proving -flies(p) and those proving
-  // flies(p) comes to the same number
-  "18": { incl: { "p": null }, gk: { "p": 0.64 } },
+  // ex18 asks which bird does NOT fly. gk 1.2.4's recursive method gives
+  // -flies(p) (.72, 0, 0, .28), so .72 for - against, with the reading
+  // `cycle cut`; the support semantics gives (.722, .077, 0, .201) (mcref).
+  // The direct method (gk 1.0.x to 1.1.2) gave .64, which the sampled net
+  // over the worlds proving -flies(p) and those proving flies(p) also gives.
+  "18": { incl: { "p": null }, gk: { "p": 0.72 } },
   "19": { incl: { "yes": 1.0 }, thr: [1.0, 0, 0, 0] },
   "20": { refuse: "functions" },
   // the page refuses ex23 before the worker sees it (its preset loads the

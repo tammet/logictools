@@ -74,7 +74,7 @@ var moduleDead = false;       // the solver aborted; this worker must be replace
 // the browser caches the solver files like any other file: both are fetched
 // under the build version, so a cached older pair is not paired with this
 // worker (the node harness goes through HOST and never uses this Module)
-var GK_BUILD = "1.0.6";
+var GK_BUILD = "1.2.5";
 
 var Module = {
   noInitialRun: true,
@@ -100,6 +100,9 @@ function gkEnsure(cb) {
 // Write the given files into the in-memory filesystem, run gk with args,
 // return everything it printed.
 function gkRun(files, args) {
+  // callMain() of Emscripten 6 inserts the program name into the array it
+  // is given; a copy keeps constant argument lists such as WORLD_ARGS intact
+  args = args.slice();
   if (HOST) return HOST.run(files, args);
   for (var i = 0; i < files.length; i++)
     Module.FS.writeFile(files[i].name, files[i].data);
@@ -1368,6 +1371,113 @@ function parseReference(out) {
   return res;
 }
 
+// gk 1.2.4: the reference is the recursive method, gk's default, as the
+// page's Solve button runs it. The {"recursive": ...} line gives four shares
+// (for, against, conflict, ignorance) per answer; the comparison column shows
+// the signed confidence for - against, keyed as the sampled answers are: "yes"
+// for a question without variables, else the bindings of the question's
+// variables joined by commas (answerKey). A negative value is gk's report
+// against the answer (negated for a closed question, rejected for an open one).
+function splitArgs(s) {
+  var out = [], depth = 0, cur = "", q = false;
+  for (var i = 0; i < s.length; i++) {
+    var c = s[i];
+    if (q) { cur += c; if (c === '"' && s[i - 1] !== "\\") q = false; continue; }
+    if (c === '"') { q = true; cur += c; continue; }
+    if (c === "(" || c === "[") depth++;
+    if (c === ")" || c === "]") depth--;
+    if (c === "," && depth === 0) { out.push(cur.trim()); cur = ""; continue; }
+    cur += c;
+  }
+  if (cur.trim() !== "") out.push(cur.trim());
+  return out.map(function (a) {
+    return (a.length > 1 && a[0] === '"' && a[a.length - 1] === '"') ? a.slice(1, -1) : a;
+  });
+}
+
+// A question or answer of gk's line as text: since gk 1.2.5 the line writes
+// literals in JSON form (["flies","a"]), up to 1.2.4 as text ("flies(a)").
+// The same conversion as litText in gkproofs.js.
+function recLitText(t) {
+  if (t === null || t === undefined || typeof t === "string") return t;
+  return recTermText(t);
+}
+
+function recTermText(t) {
+  if (typeof t === "boolean") return t ? "true" : "false";
+  if (typeof t === "number") {
+    if (Number.isInteger(t)) return String(t);
+    var s = String(t);
+    for (var p = 1; p <= 17; p++) {
+      s = t.toPrecision(p);
+      if (Number(s) === t) break;
+    }
+    s = String(Number(s));
+    return /[.eni]/.test(s) ? s : s + ".0";
+  }
+  if (typeof t === "string") {
+    if (t.indexOf("?:X") === 0) return "_V" + t.slice(3);
+    if (t[0] === ":") return t.slice(1);
+    return t;
+  }
+  if (Array.isArray(t) && t.length) {
+    if (t.length === 1) return recTermText(t[0]);
+    return recTermText(t[0]) + "(" + t.slice(1).map(recTermText).join(",") + ")";
+  }
+  return String(t);
+}
+
+function parseRecursiveReference(out, questions) {
+  var res = { result: "", answers: {}, order: [] };
+  var lines = String(out).split("\n"), d = null;
+  for (var i = 0; i < lines.length && !d; i++) {
+    if (lines[i].indexOf('{"recursive"') !== 0) continue;
+    try { d = JSON.parse(lines[i]).recursive; } catch (e) { d = null; }
+  }
+  if (!d) return res;
+  res.result = d.stop || "";
+  var q = (questions && questions.length) ? questions[0] : null;
+  var vars = q ? questionVarOrder(q) : [];
+  var items = [];
+  if (Array.isArray(d.answers)) {
+    for (i = 0; i < d.answers.length; i++)
+      items.push({ lit: recLitText(d.answers[i].answer), value: d.answers[i].value });
+  } else if (d.value) {
+    items.push({ lit: recLitText(d.question), value: d.value });
+  }
+  for (i = 0; i < items.length; i++) {
+    var v = items[i].value;
+    if (!v || v.length !== 4) continue;
+    var key;
+    if (!vars.length) key = "yes";
+    else {
+      var m = /^([^(]*)\((.*)\)$/.exec(String(items[i].lit));
+      if (!m || !Array.isArray(q) || q[0] !== m[1]) continue;
+      var args = splitArgs(m[2]), qargs = q.slice(1), bind = {};
+      if (args.length !== qargs.length) continue;
+      for (var j = 0; j < qargs.length; j++)
+        if (typeof qargs[j] === "string" && qargs[j].indexOf("?:") === 0) bind[qargs[j]] = args[j];
+      var vals = [], ok = true;
+      for (j = 0; j < vars.length; j++) {
+        if (!Object.prototype.hasOwnProperty.call(bind, vars[j])) { ok = false; break; }
+        vals.push(bind[vars[j]]);
+      }
+      if (!ok) continue;
+      key = vals.join(",");
+    }
+    var signed = v[0] - v[1];
+    if (Object.prototype.hasOwnProperty.call(res.answers, key)) continue;
+    res.answers[key] = {
+      confidence: Math.abs(signed),
+      detail: { support_for: v[0], support_against: v[1], conflict: v[2], ignorance: v[3] },
+      rejected: vars.length > 0 && signed < 0,
+      negated: vars.length === 0 && signed < 0
+    };
+    res.order.push(key);
+  }
+  return res;
+}
+
 // cmd "setup": the reference run, the clause export, the ground pool and the
 // eligibility verdict. The order of the two gk calls is fixed (see the file
 // header): a plain run first, the clausifier second, world runs only after.
@@ -1375,10 +1485,13 @@ function doSetup(job) {
   var input = job.input;
   var secs = job.seconds ? String(job.seconds) : "5";
   // the reference run is an ordinary solve, exactly as the Solve button runs
-  // it, so its numbers are the ones the page shows elsewhere
-  var refArgs = ["input", "-detail", "-outformat", "json", "-seconds", secs];
+  // it (the recursive method, gk 1.2.4), so its numbers are the ones the page
+  // shows elsewhere; the threshold mode keeps the direct method's report,
+  // whose four masses it compares
+  var thr = (job.method === "threshold");
+  var refArgs = thr ? ["input", "-detail", "-outformat", "json", "-seconds", secs]
+                    : ["input", "-seconds", secs];
   var refOut = gkRun([{ name: "input", data: input }], refArgs);
-  var reference = parseReference(refOut);
   var expOut = gkRun([{ name: "input", data: input }],
                      ["input", "-defworlds", "-clausify", "-outformat", "json"]);
   var items = parseClauseExport(expOut);
@@ -1396,6 +1509,7 @@ function doSetup(job) {
     seenq[key] = 1;
     questions.push(goalq[i]);
   }
+  var reference = thr ? parseReference(refOut) : parseRecursiveReference(refOut, questions);
 
   var reply = {
     ok: true, cmd: "setup",
@@ -1526,6 +1640,7 @@ if (typeof module !== "undefined" && module.exports) {
     questionInstances: questionInstances, questionVarOrder: questionVarOrder,
     thresholdEvaluate: thresholdEvaluate,
     queryAtomSign: queryAtomSign, wilson: wilson, pairedDiffCi: pairedDiffCi,
-    sampleWorld: sampleWorld, worldDoc: worldDoc, REFUSE: REFUSE
+    sampleWorld: sampleWorld, worldDoc: worldDoc, REFUSE: REFUSE,
+    parseRecursiveReference: parseRecursiveReference, splitArgs: splitArgs
   };
 }
