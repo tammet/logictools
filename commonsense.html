@@ -769,7 +769,7 @@ function mcProgressText() {
 }
 
 // ---- the reference tool mcref ----------------------------------------------
-// mcref.js is the JavaScript port of mcref 1.1.1, the reference tool of the
+// mcref.js is the JavaScript port of mcref 1.1.2, the reference tool of the
 // support semantics that gk's recursive method approximates (the gkreasoner
 // documentation, Doc/support_semantics.md and Doc/mcref.md). It grounds the
 // input over its constants and samples worlds; it shares no code with gk's
@@ -778,7 +778,7 @@ function mcProgressText() {
 //      mcref.py does; a JSON input is passed through and read as written;
 //   2. gk computes its own value: the recursive method, the page's settings;
 //   3. mcref.js samples the worlds (seed 1) and reports the four shares.
-var MCREF_BUILD = "1.1.1-js";
+var MCREF_BUILD = "1.1.2-js";
 // the documentation of the public gk repository
 var GKDOC = "https://github.com/tammet/gkreasoner/blob/master/Doc/";
 var mcrefJob = null;
@@ -1980,8 +1980,9 @@ gives <code>1 - (1 - 0.3) * (1 - 0.1092) = 0.3764</code>.</p>
 difference comes from the instance of the influence rule with
 <code>Y = sam</code>, whose condition <code>smokes(sam)</code> is the
 question itself. When the rule's condition names a separate predicate for
-chris, gk gives 0.3764 exactly. Press <i>Sample</i> under Advanced: the
-reference tool gives about 0.376.</p></div>
+chris, gk gives 0.3764 exactly. Press <i>Sample</i> under Advanced: with
+20,000 worlds the reference tool gives 0.372, within its sampling error
+of 0.3764.</p></div>
 
 <div id="example_cs6_input_notes"><h3>Example 6: shared evidence</h3>
 <p>Two rules predict rain: one from dark clouds and falling pressure
@@ -2304,7 +2305,8 @@ share the one event that the clause is in force.</p>
 <p>The two directions make a loop across signs between
 <code>bird(tweety)</code> and <code>flies(tweety)</code>. gk evaluates such
 a loop with a <i>cycle cut</i>, which the readings list names. Here the cut
-leaves the semantics' value: <i>Sample</i> gives about 0.252.</p></div>
+leaves the semantics' value: <i>Sample</i> gives 0.255 with 20,000
+worlds, within its sampling error of 0.252.</p></div>
 
 <div id="example_cs16_input_notes"><h3>Example 16: JSON notation</h3>
 <p>The weather example is written in gk's

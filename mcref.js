@@ -1,11 +1,11 @@
-// mcref.js: a JavaScript port of mcref 1.1.1, the Monte Carlo reference tool
+// mcref.js: a JavaScript port of mcref 1.1.2, the Monte Carlo reference tool
 // for the support semantics of gk's recursive method.
 //
 // The semantics is Doc/support_semantics.md of the gk repository. The Python
 // tool is published in https://github.com/tammet/gkreasoner. This file ports
-// two Python files of mcref 1.1.1:
+// two Python files of mcref 1.1.2:
 //
-//   mcref.py       sha256 c02276ac35c89ac17fe26984a4c12d79fad1ae22b49e83aea0b690c7e4598d9d
+//   mcref.py       sha256 92465ad8d53878060d0fd1e03f314cc34fe486ced4a19ddc5d7d57e3eda7344d
 //   mcref_read.py  sha256 36063563420653033406346a5ddb129e5440c61a337e3e97c027e6f7960c60a8
 //
 // The functions keep the Python names in camelCase, and each block names the
@@ -48,26 +48,27 @@
 (function (root) {
   "use strict";
 
-  const VERSION = "1.1.1-js";
+  const VERSION = "1.1.2-js";
   const TOOL = {
-    "mcref.py": "c02276ac35c89ac17fe26984a4c12d79fad1ae22b49e83aea0b690c7e4598d9d",
+    "mcref.py": "92465ad8d53878060d0fd1e03f314cc34fe486ced4a19ddc5d7d57e3eda7344d",
     "mcref_read.py": "36063563420653033406346a5ddb129e5440c61a337e3e97c027e6f7960c60a8"
   };
   const POS = 0, NEG = 1, CON = 2, IGN = 3, UNRES = 4;
   const TWO53 = Math.pow(2, -53);
-  const SWEEP_CAP = 100000;
   const INTERPRETATION = {
-    "semantics": "Doc/support_semantics.md, the support semantics of 2026-11-03",
+    "semantics": "Doc/support_semantics.md, the support semantics of 2026-11-03 with the cycle rule of 2026-11-10",
     "written-head rules": "a certain rule without exception literals is used in every direction (memo 4.1); " +
       "below confidence 1 or with an exception literal, at its written head only",
     "flat clauses": "one application per literal; one source event per uncertain ground clause",
     "not represented": "a classical consequence that needs several input clauses at once",
     "domain": "the constants of the input",
     "kind of a side": "decided in each world from the applications present in it (memo 4.4, 4.5)",
-    "cycles": "a cycle across signs by the narrowing of memo 5.5, ordinary applications first when the group has " +
-      "normal defaults; a one-sign or exception-only group by sweeps, the narrowing only when the sweeps " +
-      "repeat a state, an undecided atom then read as ignorance (memo 5.1, 5.4)",
-    "unresolved": "an atom of a cycle across signs left possible but not sure (memo 5.4, 5.5); a group that depends " +
+    "cycles": "a sweep group (no cycle across signs, no exception literal in the group, no normal default for or " +
+      "against an atom of the group, no unresolved outside atom) by sweeps, which settle; every other group " +
+      "by the narrowing of memo 5.5, ordinary applications first when the group has normal defaults, an " +
+      "undecided atom read as ignorance when the group has no cycle across signs and no unresolved outside " +
+      "atom (Doc/support_semantics.md 14.6, the rule of 2026-11-10)",
+    "unresolved": "an atom of a cycle across signs left possible but not sure (memo 5.5); a group that depends " +
       "on an unresolved atom runs the narrowing with that atom's two literals possible and neither sure " +
       "(memo 5), and an atom of it left possible but not sure is unresolved too",
     "rank contexts (decision 13)": "not covered; an input where they can matter is unsupported",
@@ -1609,17 +1610,12 @@
         state[i] = outcome(byatom[i].all, state, u[i], v[i]);
         continue;
       }
-      if (!g.cross) {
-        // a one-sign or exception-only group: sweeps (memo 5.1); the narrowing
-        // only when a sweep repeats a state, an undecided atom then ignorance
+      if (g.sweep) {
+        // a sweep group (group_kinds, sweep_group): sweeps, which settle by
+        // the sweep lemma; a change in sweep |G|+2 is an internal error
         for (const i of nodes) state[i] = IGN;
-        let dirty = nodes, settled = false, sw = 0;
-        const keyOf = () => {
-          let k = "";
-          for (const i of nodes) k += state[i];
-          return k;
-        };
-        const seen = new Set([keyOf()]);
+        let dirty = nodes, sw = 0;
+        const limit = nodes.length + 2;
         while (true) {
           sw++;
           const changed = [];
@@ -1627,24 +1623,24 @@
             const s = outcome(byatom[i].all, state, u[i], v[i]);
             if (s !== state[i]) changed.push(i, s);
           }
-          if (!changed.length) { settled = true; break; }
+          if (!changed.length) break;
+          if (sw >= limit) {
+            const e = new Error("a sweep group did not settle");
+            e.sweepNodes = nodes;
+            e.sweeps = sw;
+            throw e;
+          }
           const nd = new Set();
           for (let k = 0; k < changed.length; k += 2) {
             state[changed[k]] = changed[k + 1];
             for (const r of inner[changed[k]]) nd.add(r);
           }
           dirty = Array.from(nd).sort((a, b) => a - b);
-          const key = keyOf();
-          if (seen.has(key)) break;
-          if (sw >= SWEEP_CAP) { stats[1]++; break; }
-          seen.add(key);
         }
         if (sw > stats[0]) stats[0] = sw;
-        if (settled) continue;
-        narrowGroup(g, byatom, u, v, state, IGN, stats);
         continue;
       }
-      narrowGroup(g, byatom, u, v, state, UNRES, stats);
+      narrowGroup(g, byatom, u, v, state, g.cross ? UNRES : IGN, stats);
     }
   }
 
@@ -1872,16 +1868,20 @@
       for (const i of nodes) inner[i] = [];
       for (const h of nodes) for (const j of deps[h]) if (members.has(j)) inner[j].push(h);
       const cyclic = nodes.length > 1 || deps[nodes[0]].indexOf(nodes[0]) >= 0;
-      const g = {nodes: nodes, outside: outside, cyclic: cyclic, cross: false, hasNorm: false};
+      const g = {nodes: nodes, outside: outside, cyclic: cyclic, cross: false, hasNorm: false, sweep: false};
       g.cross = cyclic && isCrossSign(nodes, byatom);
       g.hasNorm = nodes.some(i => byatom[i].anyNormal);
+      // group_kinds: a sweep group has no cycle across signs, no application
+      // with an exception literal in the group and no normal default
+      g.sweep = cyclic && !g.cross && !g.hasNorm &&
+        !nodes.some(i => byatom[i].all.some(x => x.exc.some(c => members.has(c >> 1))));
       comps.push(g);
     }
     res.components = comps.length;
     const counts = insts.map(() => [0, 0, 0, 0, 0]);
     const acounts = allAtoms ? order.map(() => [0, 0, 0, 0, 0]) : null;
     const state = new Array(n).fill(IGN), u = new Array(n).fill(0.0), v = new Array(n).fill(0.0);
-    const stats = [0, 0];
+    const stats = [0];
     // splitmix64 in the order of the atom texts: atom i's U and V are the
     // draws 2i+1 and 2i+2 of a world. The state advances by GOLDEN per draw,
     // so a draw is computed only where it can change a state: U for an atom
@@ -1916,7 +1916,17 @@
       const lo = sL + stepL;
       sH = (sH + stepH + (lo > 0xffffffff ? 1 : 0)) >>> 0;
       sL = lo >>> 0;
-      world(byatom, comps, inner, u, v, state, stats);
+      try {
+        world(byatom, comps, inner, u, v, state, stats);
+      } catch (e) {
+        if (e.sweepNodes) {
+          e.message = "mcref " + VERSION + ": internal error: the sweep group {" +
+            e.sweepNodes.map(i => order[i].text).join(", ") + "} changed a state in sweep " + e.sweeps +
+            "; the sweep lemma of Doc/support_semantics.md 14.6 says that sweep " + (e.sweepNodes.length + 2) +
+            " changes nothing";
+        }
+        throw e;
+      }
       for (let j = 0; j < qidx.length; j++) counts[j][state[qidx[j]]]++;
       if (allAtoms) for (let i = 0; i < n; i++) acounts[i][state[i]]++;
       if (progress && (t & 1023) === 1023) {
@@ -1925,7 +1935,6 @@
       }
     }
     res.longest_sweeps = stats[0];
-    res.sweep_cap_hits = stats[1];
     insts.forEach(([text, key, binding], j) => {
       const a = {instance: text, key: [qs ? "-" : "+", key.pred, key.args === null ? null : key.args.map(c => c.out)]};
       if (inp.qvars.length) a.binding = binding;

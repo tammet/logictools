@@ -1,4 +1,4 @@
-// mcref_check.js: compares mcref.js, the JavaScript port of mcref 1.1.1, with
+// mcref_check.js: compares mcref.js, the JavaScript port of mcref 1.1.2, with
 // the Python tool mcref.py on the same inputs, seed and sample count.
 //
 // The Python tool is published in https://github.com/tammet/gkreasoner. The
