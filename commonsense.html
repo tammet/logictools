@@ -103,6 +103,9 @@ pre code {
 /* symmetric spacing: a margin on one side only left the separator dots
    sitting right of centre between the links */
 .modelinks a { margin: 0 4px; }
+/* Bootstrap 3 sets summary to display: block, which hides the disclosure
+   triangle: an expander then looks like plain text. Restore the triangle. */
+summary { display: list-item; cursor: pointer; }
 </style>
 <script src="https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js"></script>
 <script src="gkproofs.js?v=1.2.5"></script>
@@ -331,7 +334,8 @@ function proofsHtml(name, proof) {
   if (n("guards")) parts.push(n("guards") + " of guards");
   if (!parts.length) return "";
   var lines = GkProofs.answerProofLines(proof, 0);
-  return "<details><summary><b>proofs</b> of " + esc(name) + ": " + esc(parts.join(", ")) +
+  // open: the proofs are part of the answer; the triangle folds them away
+  return "<details open><summary><b>proofs</b> of " + esc(name) + ": " + esc(parts.join(", ")) +
          "</summary><pre>" + esc(lines.join("\n")) + "</pre></details>";
 }
 
