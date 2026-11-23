@@ -1,13 +1,16 @@
-// Verification harness for the commonsense reasoner page (gk 1.2.5).
+// Verification harness for the commonsense reasoner page (gk 1.3.2).
 //
 // For each example of commonsense.html it reads the input and the Advanced
 // preset out of the page, builds the argument list with the page's own
 // buildArgs(), runs the checked-in WebAssembly build gkjs.js with the files
 // the page passes (the background axioms and the taxonomy tables where the
 // example needs them), and checks the {"recursive": ...} line: every answer
-// with its four shares (within 0.0005 of the values below, recorded with
-// gk 1.2.5 on 2026-11-10), and the proofs of each answer with support for or
-// against. Answers are named by their text form (gkproofs.js litText).
+// with its four shares (within 0.0005 of the values below, which are the
+// values of the native gk 1.3.2 with the same arguments), and the proofs of
+// each answer with support for or against. Answers are named by their text
+// form (gkproofs.js litText). The page passes its method explicitly: the
+// default (-auto) for most examples, the exact method (-exact) for
+// examples 24 to 27.
 //
 // Each example runs in a FRESH child process: the page runs each solve in a
 // fresh Web Worker for the same reason (gk keeps options in static globals
@@ -33,7 +36,7 @@ var EXPECT = {
   "2": [["rain(today)", [0.56, 0, 0, 0.44]]],
   "3": [["rain(today)", [0.8, 0, 0, 0.2]]],
   "4": [["flies(tweety)", [0.3, 0, 0.4, 0.3]]],
-  "5": [["smokes(sam)", [0.3804, 0, 0, 0.6196]]],
+  "5": [["smokes(sam)", [0.37644, 0, 0, 0.62356]]],
   "6": [["rain_likely(today)", [0.846, 0, 0, 0.154]]],
   "7": [["flies(tweety)", [0.27, 0, 0, 0.73]]],
   "8": [["flies(tweety)", [1, 0, 0, 0]], ["flies(robin)", [1, 0, 0, 0]]],
@@ -46,12 +49,12 @@ var EXPECT = {
   "15": [["flies(tweety)", [0.252, 0, 0, 0.748]]],
   "16": [["rain(today)", [0.56, 0, 0, 0.44]]],
   "17": [["rain(today)", [0.56, 0, 0, 0.44]]],
-  "18": [["-flies(p)", [0.72, 0, 0, 0.28]]],
+  "18": [["-flies(p)", [0.72, 0.08, 0, 0.2]]],
   "19": [["flies(b1)", [1, 0, 0, 0]]],
   "20": [["goal(do(putdown(c,b),do(pickup(c),do(putdown(b,a),do(pickup(b),s0)))))", [1, 0, 0, 0]]],
   "21": [["$defq0", [0, 1, 0, 0]]],
   "22": [["$defq0($some_fox)", [1, 0, 0, 0]]],
-  "23": [["isa(b1,organism)", [0.5731, 0.0179, 0.3821, 0.0269]], ["isa(a1,organism)", [0, 0.4, 0.6, 0]]],
+  "23": [["isa(b1,organism)", [0.5731, 0.0179, 0.3821, 0.0269]], ["isa(a1,organism)", [0, 1, 0, 0]]],
   "24": [["flies(tweety)", [0.396, 0.56, 0, 0.044]]],
   "25": [["flies(tweety)", [0.396, 0.56, 0, 0.044]]],
   "26": [["flies(tweety)", [0.6984, 0.224, 0, 0.0776]]],

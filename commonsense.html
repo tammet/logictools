@@ -128,7 +128,9 @@ var gkWorker = null;          // the worker running the current/last solve
 
 // Per-example presets applied when an example is picked. Keys are the option
 // values of the two example menus.
-//   method:"direct"  -> run the direct method of gk 1.1.2 (default: recursive)
+//   method:"exact"   -> preselect the exact method (default: the default
+//                       choice, -auto); "general" the general method;
+//                       "direct" the historical direct method of gk 1.1.2
 //   detail:true      -> switch the detailed report on
 //   strategy:"..."   -> prefill the strategy field
 //   seconds:"30"     -> set the time limit
@@ -149,7 +151,14 @@ var examplePresets = {
   // 5-second budget to find the which-answer; at 8 seconds it finds it
   // (5.8 s in wasm under node), 10 leaves a margin for slower machines
   "22": { seconds: "10", strategy: '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}', confidence: "0.1", background: true, taxonomy: true },
-  "23": { taxonomy: true }
+  "23": { taxonomy: true },
+  // 24-27 compare gk with the support semantics: the exact method is
+  // preselected, and its complete answer is the semantics' value for the
+  // input as gk reads it
+  "24": { method: "exact" },
+  "25": { method: "exact" },
+  "26": { method: "exact" },
+  "27": { method: "exact" }
 };
 
 function gid(x) { return document.getElementById(x); }
@@ -161,12 +170,22 @@ function showEmptyResult() { gid("result").innerHTML = RESULT_EMPTY; }
 
 // ---- running gk ---------------------------------------------------------
 
-// The method of the solve: "recursive" (gk's default since 1.2.0) or
-// "direct" (the direct method of gk 1.1.2, option -direct).
+// The method of the solve: the public choice in the main selector, "auto"
+// (the default: the exact method first, then the general method),
+// "exact" (the exact method) or "general" (the general method), or
+// "direct", the historical direct method of gk 1.1.2 (a checkbox under
+// Advanced, which overrides the selector). The page always passes the
+// method to gk explicitly (-auto, -exact, -general or -direct).
 function currentMethod() {
+  var d = gid("direct");
+  if (d && d.checked) return "direct";
   var m = gid("method");
-  return (m && m.value === "direct") ? "direct" : "recursive";
+  var v = m ? m.value : "auto";
+  return (v === "general" || v === "exact") ? v : "auto";
 }
+// the names of the documents
+var METHOD_NAME = { auto: "the default", general: "the general method", exact: "the exact method",
+                    direct: "the direct method of gk 1.1.2" };
 
 // The exception limit is an option of the direct method only: in gk 1.2.x
 // -blockerconfidence, like -detail, selects the direct method by itself.
@@ -180,22 +199,27 @@ function methodChanged() {
   // the confidence limit too: only the direct method's report reads it
   gid("confidence").disabled = !direct;
   gid("confidence_label").style.opacity = direct ? "1" : "0.5";
-  // full proofs (-fullproof) belong to the recursive method's proofs
+  // full proofs (-fullproof) belong to the proofs of the default, the exact
+  // and the general method
   gid("fullproof").disabled = direct;
   gid("fullproof_label").style.opacity = direct ? "0.5" : "1";
+  // the historical direct method overrides the main selector, visibly
+  gid("method").disabled = direct;
 }
 
 // Read the Advanced controls into a gk argument list (without the input file
 // names). Never adds -parallel: the WebAssembly build runs single-process.
-// Under the recursive method the detailed report is drawn from the dump that
-// gk prints anyway, so -detail is passed only to the direct method.
+// For the default, the exact and the general method the detailed report is
+// drawn from the dump,
+// which gk prints only with -dwdump; the direct method gets -detail instead.
 function buildArgs(methodOverride) {
   var args = [];
-  var direct = (methodOverride || currentMethod()) === "direct";
-  if (direct) args.push("-direct");
+  var method = methodOverride || currentMethod();
+  var direct = method === "direct";
+  args.push(direct ? "-direct" : "-" + method);   // -auto, -general or -exact
   var secs = parseInt(gid("seconds").value, 10); if (isNaN(secs)) secs = 5;
   args.push("-seconds", "" + secs);
-  if (direct && gid("detail").checked) args.push("-detail");
+  if (gid("detail").checked) args.push(direct ? "-detail" : "-dwdump");
   if (!direct && gid("fullproof").checked) args.push("-fullproof");
   var ma = parseInt(gid("maxanswers").value, 10);
   if (!isNaN(ma)) args.push("-maxanswers", "" + ma);
@@ -283,8 +307,28 @@ function readingsHtml(r) {
   return h + "</ul>";
 }
 
-// The search status of the recursive line.
+// The search status of the recursive line: the exact method's summary
+// (complete_mode), or the general method's nested searches.
 function statusHtml(r) {
+  var cm = r.complete_mode;
+  if (cm && cm.covered === false) return "";   // the method line gives the reason
+  if (cm) {
+    var q = [];
+    if (cm.search) q.push("the exact method's search: " + cm.search);
+    if (cm.tasks !== undefined) q.push("tasks ended: " + (cm.tasks_ended || 0) + " of " + cm.tasks);
+    if (r.applications !== undefined) q.push("applications: " + r.applications);
+    if (cm.collection_ms !== undefined) q.push("collection " + Math.round(cm.collection_ms) + " ms, evaluation " +
+                                               Math.round(cm.evaluation_ms || 0) + " ms");
+    var hx = "<p><b>search</b>: " + esc(q.join("; ")) + ".</p>";
+    var lim = cm.limits || [];
+    if (lim.length) {
+      hx += "<p>limits of this run:</p><ul>";
+      for (var i = 0; i < lim.length; i++)
+        hx += "<li>" + esc(Array.isArray(lim[i]) ? lim[i].join(": ") : String(lim[i])) + "</li>";
+      hx += "</ul>";
+    }
+    return hx;
+  }
   var parts = [];
   parts.push("nested searches: " + (r.tasks || 0) +
              (r.tasks_cut ? ", " + r.tasks_cut + " cut by their time allowance" : "") +
@@ -343,6 +387,80 @@ function proofsHtml(name, proof) {
          "</summary><pre>" + esc(lines.join("\n")) + "</pre></details>";
 }
 
+// The method that answered: "exact" or "general". Under the default the
+// line's "policy" names it; a line with "complete_mode" is the exact
+// method's; any other line is the general method's.
+function answeredBy(r) {
+  if (r.policy) return r.policy.answer_from === "the exhaustive search" ? "exact" : "general";
+  return r.complete_mode ? "exact" : "general";
+}
+
+// The status of one value, in the paper's terms: "complete" for an answer of
+// the exact method marked complete ("complete": true), the value of the
+// support semantics; "not complete" for an answer of the exact method at a
+// limit or with a named approximation; "estimate" for the general method's
+// budgeted estimate; "no value" without a value.
+function valueStatus(r, a) {
+  var x = a || r;
+  if (!x.value) return "no value";
+  if (answeredBy(r) !== "exact") return "estimate";
+  var complete = a ? a.complete : (r.complete_mode ? r.complete_mode.complete : undefined);
+  return complete === true ? "complete" : "not complete";
+}
+
+// The reason of a status other than complete, when the line gives one.
+function statusReason(r, a) {
+  if (answeredBy(r) === "general") {
+    if (r.policy && r.policy.reason)
+      return (r.policy.branch === "switch" ? "the exact method did not finish: " :
+              "the exact method does not cover this input: ") + r.policy.reason;
+    return "the general method gives a budgeted estimate" + (r.stop ? " (" + r.stop + ")" : "");
+  }
+  var lim = (a && a.limits) || (r.complete_mode && r.complete_mode.limits) || [];
+  var t = [];
+  for (var i = 0; i < lim.length; i++) t.push(Array.isArray(lim[i]) ? lim[i].join(": ") : String(lim[i]));
+  return t.length ? "the exact method reached a limit: " + t.join("; ") : "";
+}
+
+// The method line and the status line above the answers.
+function methodHtml(r) {
+  var req = currentMethod();
+  var by = answeredBy(r);
+  var h = "<p><b>method</b>: " + esc(METHOD_NAME[req] || req) + " requested; answered by <b>" +
+          esc(METHOD_NAME[by]) + "</b>";
+  if (r.policy && r.policy.branch)
+    h += " (" + esc(r.policy.branch === "phase 1" ? "the exact method answered within its share of the time" :
+                    (r.policy.branch === "switch" ? "the exact method did not finish; the general method " +
+                     "answered with the time left" : "the default sent the input to the general method at once")) + ")";
+  h += ".</p>";
+  var cm = r.complete_mode;
+  if (cm && cm.covered === false) {
+    h += "<p><b>status</b>: no value. " +
+         esc(cm.not_covered && cm.not_covered.text ? cm.not_covered.text : "The exact method does not cover this input.") +
+         "</p>";
+    return h;
+  }
+  if (!r.answers && r.value) {
+    var st = valueStatus(r, null);
+    var why = st !== "complete" ? statusReason(r, null) : "";
+    h += "<p><b>status</b>: " + esc(st) + (why ? " &mdash; " + esc(why) : "") + "</p>";
+  } else if (r.answers && r.answers.length) {
+    var why2 = statusReason(r, null);
+    if (by === "general" && why2) h += "<p><b>status</b>: estimate &mdash; " + esc(why2) + "</p>";
+  }
+  if (by === "exact")
+    h += "<p style=\"color: #666;\">A complete answer of the exact method is the value of the support " +
+         "semantics for the input as gk reads it, within gk's numerical precision (confidences are read to " +
+         "six decimals).</p>";
+  var cr = cm && cm.confidence_readings;
+  if (cr && cr.length) {
+    h += "<p><b>confidence readings</b>:</p><ul>";
+    for (var i = 0; i < cr.length; i++) h += "<li>" + esc(cr[i]) + "</li>";
+    h += "</ul>";
+  }
+  return h;
+}
+
 // Show what gk printed. The recursive method prints one line
 // {"recursive": ...} and then a dump; both are drawn as tables, with the raw
 // text behind an expander. Any other output (the direct method, an error
@@ -357,7 +475,7 @@ function showGkOutput(out) {
   }
   var r = line.recursive;
   lastGk = r;
-  var h = "";
+  var h = methodHtml(r);
   var sh = 'style="text-align: right; font-weight: normal; color: #666;"';
   var head = '<table class="table table-condensed" style="width: auto;"><tr><th>answer</th>' +
              '<th style="text-align: right; padding-right: 14px;">signed confidence</th>' +
@@ -374,20 +492,22 @@ function showGkOutput(out) {
     h += head + shareRow(qname, r.value, r.signed_confidence) + "</table>";
     h += proofsHtml(qname, r.proof);
   } else if (r.answers && r.answers.length) {
-    h += head;
+    h += head.replace("</tr>", '<th ' + sh + '>status</th></tr>');
     for (var k = 0; k < r.answers.length; k++)
       h += shareRow(GkProofs.litText(r.answers[k].answer), r.answers[k].value,
-                    r.answers[k].signed_confidence);
+                    r.answers[k].signed_confidence).replace("</tr>",
+                    '<td ' + SHARE_TD + '>' + esc(valueStatus(r, r.answers[k])) + "</td></tr>");
     h += "</table>";
     for (k = 0; k < r.answers.length; k++)
       h += proofsHtml(GkProofs.litText(r.answers[k].answer), r.answers[k].proof);
-  } else {
+  } else if (!(r.complete_mode && r.complete_mode.covered === false)) {
     h += "<p><b>no value</b>" + (r.unfinished ? ": " + esc([].concat(r.unfinished).join("; ")) : "") +
          (r.stop ? " (" + esc(r.stop) + ")" : "") + "</p>";
   }
   h += readingsHtml(r) + statusHtml(r);
   if (gid("detail").checked) {
     var j = out.indexOf('{"@format":"gk_dump_v1"');
+    if (j < 0) j = out.indexOf('{"@format":"gk_key_dump_v1"');   // the exact method's dump
     h += dumpHtml(jsonAt(out, j));
   }
   // the dump can run to megabytes on the larger examples: the raw view shows
@@ -410,7 +530,7 @@ function solveWith(input, args, kb) {
   if (gkWorker) { gkWorker.terminate(); gkWorker = null; }
   // The version query defeats a cached older worker; gkworker.js carries the
   // same version onto its gkjs.js and gkjs.wasm requests (GK_BUILD there).
-  var w = new Worker("gkworker.js?v=1.2.5");
+  var w = new Worker("gkworker.js?v=1.3.2");
   gkWorker = w;
   w.onmessage = function (ev) {
     var out = (ev.data && ev.data.output) ? ev.data.output : "";
@@ -769,16 +889,17 @@ function mcProgressText() {
 }
 
 // ---- the reference tool mcref ----------------------------------------------
-// mcref.js is the JavaScript port of mcref 1.1.2, the reference tool of the
-// support semantics that gk's recursive method approximates (the gkreasoner
-// documentation, Doc/support_semantics.md and Doc/mcref.md). It grounds the
-// input over its constants and samples worlds; it shares no code with gk's
-// proof search. A run has three steps, each in a worker of its own:
+// mcref.js is the JavaScript port of mcref 1.3.1, the reference tool of the
+// support semantics (the gkreasoner documentation, Doc/support_semantics.md
+// and Doc/mcref.md), in its exact evaluation. It grounds the input over its
+// constants, forms the applications and the proofs of several statements,
+// and evaluates one world in each cell of the world space; it shares no code
+// with gk's proof search. A run has three steps, each in a worker of its own:
 //   1. gk converts the input to JSON-LD-LOGIC (-writejson -recursive), as
 //      mcref.py does; a JSON input is passed through and read as written;
-//   2. gk computes its own value: the recursive method, the page's settings;
-//   3. mcref.js samples the worlds (seed 1) and reports the four shares.
-var MCREF_BUILD = "1.1.2-js";
+//   2. gk computes its own value with the page's settings;
+//   3. mcref.js evaluates the cells and reports the five numbers.
+var MCREF_BUILD = "1.3.1-js";
 // the documentation of the public gk repository
 var GKDOC = "https://github.com/tammet/gkreasoner/blob/master/Doc/";
 var mcrefJob = null;
@@ -793,7 +914,7 @@ function mcrefTeardown() {
 // one gk run in a fresh worker (see gkworker.js); cb(output)
 function mcrefGk(input, args, cb) {
   var job = mcrefJob;
-  var w = new Worker("gkworker.js?v=1.2.5");
+  var w = new Worker("gkworker.js?v=1.3.2");
   job.gk = w;
   w.onmessage = function (ev) {
     w.terminate();
@@ -806,7 +927,7 @@ function mcrefGk(input, args, cb) {
     mcrefTeardown();
     showResult("solver error: " + mcEsc((e && e.message) ? e.message : e));
   };
-  w.postMessage({ input: input, args: args, kb: null });
+  w.postMessage({ input: input, args: args.slice(), kb: null });
 }
 
 function mcrefStart() {
@@ -817,11 +938,13 @@ function mcrefStart() {
   showResult("reference tool: reading the input...");
   mcrefGk(input, ["input", "-writejson", "-recursive"], function (conv) {
     var asJson = conv.indexOf("passed through unchanged") >= 0;
-    var run = { cmd: "run", input: asJson ? input : conv, samples: samples, seed: 1,
-                maxGround: 200000 };
+    var run = { cmd: "run", input: asJson ? input : conv, mode: "auto", maxCells: 300000, maxGround: 200000,
+                samples: job.samples, seed: 1 };
     if (!asJson) { run.convertedBy = "gk -writejson -recursive"; run.conversionOutput = conv; }
     showResult("reference tool: computing gk's own value...");
-    mcrefGk(input, ["input"].concat(buildArgs("recursive")), function (gkOut) {
+    var method = currentMethod() === "direct" ? "general" : currentMethod();
+    job.method = method;
+    mcrefGk(input, ["input"].concat(buildArgs(method)), function (gkOut) {
       job.gkOut = gkOut;
       var w = new Worker("mcref.js?v=" + MCREF_BUILD);
       job.worker = w;
@@ -829,32 +952,29 @@ function mcrefStart() {
         var m = ev.data || {};
         if (mcrefJob !== job) return;
         if (m.progress !== undefined) {
-          showResult("reference tool: " + m.progress + " / " + samples + " worlds sampled...");
+          showResult("reference tool: " + m.progress + " / " + m.total +
+                     (m.unit === "worlds" ? " worlds sampled..." : " cells evaluated..."));
           return;
         }
         w.terminate();
         mcrefJob = null;
         if (m.error) { showResult("reference tool failed: " + mcEsc(m.error)); return; }
-        mcrefRender(m.result, job.gkOut, samples);
+        mcrefRender(m.result, job.gkOut, job.method);
       };
       w.onerror = function (e) {
         if (mcrefJob !== job) return;
         mcrefTeardown();
         showResult("reference tool error: " + mcEsc((e && e.message) ? e.message : e));
       };
-      showResult("reference tool: sampling " + samples + " worlds...");
+      showResult("reference tool: evaluating the cells of the world space...");
       w.postMessage(run);
     });
   });
 }
 
-// the half-width of the tool's interval: 95 % for the four shares of one
-// answer together (Hoeffding with a union bound), as mcref prints it
-function mcrefE(n) { return Math.sqrt(Math.log(8 / 0.05) / (2 * n)); }
-
 // gk's {"recursive": ...} line: the value per answer literal and the readings
 function mcrefGkValues(out) {
-  var r = { values: {}, order: [], readings: [], found: false };
+  var r = { values: {}, order: [], readings: [], found: false, line: null };
   var lines = String(out).split("\n"), d = null;
   for (var i = 0; i < lines.length && !d; i++) {
     if (lines[i].indexOf('{"recursive"') !== 0) continue;
@@ -862,6 +982,7 @@ function mcrefGkValues(out) {
   }
   if (!d) return r;
   r.found = true;
+  r.line = d;
   (d.readings || []).forEach(function (x) {
     var n = Array.isArray(x) ? x[0] : String(x);
     if (r.readings.indexOf(n) < 0) r.readings.push(n);
@@ -880,33 +1001,57 @@ function mcrefGkValues(out) {
 
 function mcrefTuple(v) {
   if (!v) return "no value";
-  return "(" + v.map(function (x) { return (Math.round(x * 1000) / 1000).toString(); }).join(", ") + ")";
+  return "(" + v.map(function (x) { return (Math.round(x * 10000) / 10000).toString(); }).join(", ") + ")";
 }
 
-function mcrefRender(res, gkOut, samples) {
+function mcrefShare(x) { return (Math.round(x * 10000) / 10000).toString(); }
+
+// gk prints its values to about six decimals: within this they count as equal
+var MCREF_EQUAL = 1e-6;
+
+// the half-width of a sampled share's interval: 95 % for the four shares of
+// one answer together (Hoeffding with a union bound), as mcref prints it
+function mcrefE(n) { return Math.sqrt(Math.log(8 / 0.05) / (2 * n)); }
+
+function mcrefRender(res, gkOut, method) {
   var html;
   if (res.unsupported) {
     html = "<p>The reference tool declines this input: <b>" + mcEsc(res.unsupported) +
            "</b>. It computes the support semantics for inputs that it can ground " +
            "over their constants: no function symbols, no equality, no taxonomy " +
-           "priorities (<a href=\"" + GKDOC + "mcref.md\">the reference tool</a>, " +
+           "ranks (<a href=\"" + GKDOC + "mcref.md\">the reference tool</a>, " +
            "Section 6).</p>";
     showResult(html);
     return;
   }
-  var e = mcrefE(samples);
   var gk = mcrefGkValues(gkOut);
+  var gkBy = gk.line ? METHOD_NAME[answeredBy(gk.line)] : null;
+  if (res.too_many_cells) {
+    html = "<p>Reference tool mcref " + mcEsc(res.version) + ": exact evaluation gives no value here: " +
+           mcEsc(res.too_many_cells) + ". The page evaluates at most 300,000 cells. The Python tool " +
+           "samples worlds for such an input (<a href=\"" + GKDOC + "mcref.md\">the reference tool</a>).</p>";
+    showResult(html);
+    return;
+  }
   var rows = res.answers || [];
   var single = (rows.length === 1 && gk.order.length === 1);
   var used = {};
-  html = "<p>Reference tool mcref " + mcEsc(res.version) + " (the support semantics), " +
-         samples + " sampled worlds, seed 1. Each share of the tool lies within " +
-         "e = " + e.toFixed(4) + " of the semantics' value, at 95 % for the four " +
-         "shares of one answer together. gk's value is the recursive method's, " +
-         "with the settings above.</p>";
+  var sampled = res.mode === "sampling";
+  var e = sampled ? res.error_bound : 0;
+  var gkText = "gk's value is " + (gkBy ? "that of " + gkBy + ", " : "") + "with the settings above (" +
+               mcEsc(METHOD_NAME[method] || method) + " requested).";
+  if (sampled)
+    html = "<p>Reference tool mcref " + mcEsc(res.version) + " (the support semantics), sampling: " +
+           res.worlds + " worlds, seed " + res.seed + ". Exact evaluation does not run here: " +
+           mcEsc(res.exact_not_used || "") + ". Each share of the tool lies within e = " + e.toFixed(4) +
+           " of the semantics' value, at 95 % for the four shares of one answer together. " + gkText + "</p>";
+  else
+    html = "<p>Reference tool mcref " + mcEsc(res.version) + " (the support semantics), exact evaluation: " +
+           res.cells + " cell" + (res.cells === 1 ? "" : "s") + " of the world space, one world in each. " +
+           "The values are exact up to the rounding of floating-point numbers. " + gkText + "</p>";
   html += '<table class="table table-condensed" style="width: auto;">';
   html += "<tr><th>answer</th><th>reference tool<br>(for, against, conflict, ignorance)</th>" +
-          "<th>unresolved</th><th>gk</th><th>comparison</th></tr>";
+          "<th>no value</th><th>gk</th><th>comparison</th></tr>";
   for (var i = 0; i < rows.length; i++) {
     var a = rows[i];
     var gv = gk.values.hasOwnProperty(a.instance) ? gk.values[a.instance]
@@ -914,16 +1059,17 @@ function mcrefRender(res, gkOut, samples) {
     if (gk.values.hasOwnProperty(a.instance)) used[a.instance] = 1;
     else if (single) used[gk.order[0]] = 1;
     var cmp;
-    if (!gv) cmp = (a.value[0] <= e) ? "gk lists no answer; the tool's support is 0"
-                                     : "gk lists no answer";
-    else if (a.unstable > 0) cmp = "not compared: unresolved worlds";
+    if (!gv) cmp = (a.value[0] <= (sampled ? e : MCREF_EQUAL)) ? "gk lists no answer; the tool's support is 0" +
+                   (sampled ? " within e" : "") : "gk lists no answer";
+    else if (a.unstable > MCREF_EQUAL) cmp = "not compared: a share without a value";
     else {
       var d = 0;
       for (var k = 0; k < 4; k++) d = Math.max(d, Math.abs(gv[k] - a.value[k]));
-      cmp = (d <= e + 1e-12) ? "agree (within e)" : ("differ by " + d.toFixed(3));
+      if (sampled) cmp = (d <= e + 1e-12) ? "agree (within e)" : ("differ by " + d.toFixed(4));
+      else cmp = (d <= MCREF_EQUAL) ? "equal" : ("differ by " + d.toFixed(4));
     }
     html += "<tr><td><code>" + mcEsc(a.instance) + "</code></td><td>" + mcrefTuple(a.value) +
-            "</td><td>" + (Math.round(a.unstable * 1000) / 1000) + "</td><td>" +
+            "</td><td>" + mcrefShare(a.unstable) + "</td><td>" +
             (gv === undefined ? "" : mcrefTuple(gv)) + "</td><td>" + cmp + "</td></tr>";
   }
   for (i = 0; i < gk.order.length; i++) {
@@ -935,16 +1081,32 @@ function mcrefRender(res, gkOut, samples) {
   html += "</table>";
   if (!rows.length && !gk.order.length) html += "<p>Neither the tool nor gk gives an answer.</p>";
   if (!gk.found) html += "<p>gk printed no value line for this input.</p>";
+  // the notes and limits that the tool prints
+  var notes = [];
+  (res.readings || []).forEach(function (x) {
+    var kind = Array.isArray(x) ? x[0] : "", text = Array.isArray(x) ? x[1] : String(x);
+    if (kind === "proofs" && /^0 applications /.test(text) && text.indexOf("LIMIT") < 0) return;
+    notes.push((kind ? kind + ": " : "") + text);
+  });
+  var cr = res.clause_rule_in_circle;
+  if (cr && cr.world_share > 0) {
+    notes.push("clause rule in a cycle: in a share " + mcrefShare(cr.world_share) + " of the world space " +
+               "the rule had no result, and the atoms of the group that changed between its evaluations " +
+               "have no value there" + (cr.groups && cr.groups.length ? ": " + cr.groups.map(function (gr) {
+                 return "{" + gr.join(", ") + "}"; }).join("; ") : ""));
+  }
+  if (notes.length) {
+    html += "<p>The tool's notes:</p><ul>";
+    for (i = 0; i < notes.length; i++) html += "<li>" + mcEsc(notes[i]) + "</li>";
+    html += "</ul>";
+  }
   if (gk.readings.length)
     html += "<p>gk records the readings " + gk.readings.map(function (x) {
               return "<code>" + mcEsc(x) + "</code>"; }).join(", ") +
             ". A reading names an approximation or a convention of gk's " +
-            "evaluation; the approximations (such as <code>cycle cut</code>) can " +
+            "evaluation; an approximation of the general method can " +
             "make gk's value differ from the tool's (<a href=\"" + GKDOC +
             "recursive_output.md\">the readings</a>).</p>";
-  if (res.readings && res.readings.length)
-    html += "<p>The tool drops " + res.readings.length + " application(s) whose " +
-            "exception is one of their own conditions (they never apply).</p>";
   showResult(html);
 }
 
@@ -1059,9 +1221,10 @@ function mcPairedDiffCi(posOnly, negOnly, n) {
 
 function switchAdvanced() { $('#advanced_buttons').slideToggle('slow'); }
 
-// Each sampling method has its own number of worlds: the reference tool
-// mcref samples cheaply (no proof search per world) and defaults to 20000;
-// clause activation runs gk on every world and defaults to 1000. A choice
+// Each method has its own number of worlds. The reference tool mcref
+// evaluates the cells of the world space exactly up to 300,000 cells and
+// samples the number of worlds only above that limit; it defaults to 20000.
+// Clause activation runs gk on every world and defaults to 1000. A choice
 // made for one method is kept while the other is selected.
 var mcTrialsFor = { mcref: "20000", subtract: "1000" };
 var mcMethodNow = "mcref";
@@ -1083,7 +1246,8 @@ function resetAdvanced() {
   gid("maxanswers").value = "10";
   gid("confidence").value = "0.1";
   gid("blockerconfidence").value = "0.5";
-  gid("method").value = "recursive";
+  gid("method").value = "auto";
+  gid("direct").checked = false;
   methodChanged();
   gid("strategy").value = "";
   mcTrialsFor = { mcref: "20000", subtract: "1000" };
@@ -1093,7 +1257,8 @@ function resetAdvanced() {
 }
 
 function applyPreset(p) {
-  if (p.method) { gid("method").value = p.method; methodChanged(); }
+  if (p.method === "direct") { gid("direct").checked = true; methodChanged(); }
+  else if (p.method) { gid("method").value = p.method; methodChanged(); }
   if (p.seconds) gid("seconds").value = p.seconds;
   if (p.detail) gid("detail").checked = true;
   if (p.fullproof) gid("fullproof").checked = true;
@@ -1101,7 +1266,10 @@ function applyPreset(p) {
   if (p.confidence) gid("confidence").value = p.confidence;
   if (p.blockerconfidence) gid("blockerconfidence").value = p.blockerconfidence;
   if (p.strategy) gid("strategy").value = p.strategy;
-  if (Object.keys(p).length) gid("advanced_buttons").style.display = "block";
+  // the method selector is in the main row: a preset of the method alone
+  // does not open the Advanced controls
+  if (Object.keys(p).filter(function (k) { return k !== "method"; }).length)
+    gid("advanced_buttons").style.display = "block";
 }
 
 function setNotes(divid, srcel) {
@@ -1289,6 +1457,15 @@ query(flies(X)).</textarea>
             <option value="22">English: which one</option>
           </optgroup>
         </select>
+        <div style="display: inline-block; margin: 0 4px 0 10px;">method</div>
+        <select class="form-control" style="width: 175px;" id="method"
+          aria-label="the method: the default, the exact method or the general method"
+          title="the default: the exact method first, then the general method. The exact method: an exhaustive search, complete when every search task ended. The general method: a budgeted estimate"
+          onchange="methodChanged()">
+          <option value="auto" selected>the default</option>
+          <option value="exact">the exact method</option>
+          <option value="general">the general method</option>
+        </select>
         <div style="display: inline-block; margin: 0 4px;">or</div>
         <span class="btn btn-default btn-file">
         Browse<input type="file" id="files" name="files" value="">
@@ -1302,13 +1479,10 @@ query(flies(X)).</textarea>
         <button onclick="clearInput(this); return false;" class="btn btn-small btn-default"
         >Clear input</button>
         <div id="advanced_buttons" style="padding-top: 15px; display: none;">
-          <div style="display: inline-block; width: 62px; text-align: center;">method</div>
-          <select class="form-control" style="width: 150px;" id="method"
-            aria-label="the method: recursive (the default) or the direct method of gk 1.1.2"
-            onchange="methodChanged()">
-            <option value="recursive" selected>recursive</option>
-            <option value="direct">direct (gk 1.1.2)</option>
-          </select>
+          <label id="direct_label" style="font-weight: normal; margin: 0 8px 0 4px; vertical-align: middle;"
+                 title="historical: the direct method of gk 1.1.2, with its own output; it overrides the method selector"
+                 >historical:&nbsp;direct&nbsp;method <input type="checkbox" id="direct" onchange="methodChanged()"
+                 style="margin: 0 0 0 5px; position: relative; top: 2px;"></label>
           <div style="display: inline-block; width: 62px; text-align: center;">seconds</div>
           <input type="text" class="form-control" id="seconds" value="5" style="width: 50px"
                  aria-label="time limit in seconds"></input>
@@ -1316,7 +1490,7 @@ query(flies(X)).</textarea>
                  >detailed&nbsp;report <input type="checkbox" id="detail"
                  style="margin: 0 0 0 5px; position: relative; top: 2px;"></label>
           <label id="fullproof_label" style="font-weight: normal; margin: 0 8px 0 7px; vertical-align: middle;"
-                 title="with the recursive method: the sub-proofs that the nested searches found"
+                 title="the sub-proofs that the searches found, under the step whose search found them"
                  >full&nbsp;proofs <input type="checkbox" id="fullproof"
                  style="margin: 0 0 0 5px; position: relative; top: 2px;"></label>
           <div style="display: inline-block; width: 80px; text-align: center;">max&nbsp;answers</div>
@@ -1344,7 +1518,8 @@ query(flies(X)).</textarea>
             </select>
             <div style="display: inline-block; width: 50px; text-align: center;">worlds</div>
             <select class="form-control" style="width: 100px;" id="mc_trials"
-              aria-label="number of sampled worlds">
+              aria-label="number of sampled worlds; for the reference tool only above 300,000 cells"
+              title="the number of sampled worlds: for clause activation always; for the reference tool only above 300,000 cells, where it samples instead of evaluating the cells exactly">
               <option value="300">300</option>
               <option value="1000">1000</option>
               <option value="10000">10000</option>
@@ -1405,13 +1580,15 @@ reasoner &mdash; it runs entirely in your browser &mdash; and read the
 answers, their four shares and their proofs in the <i>Result</i> area, with
 notes below. Then edit the problem, or clear the box and write your own.
 <i>Stop</i> interrupts a long search; <i>Browse</i> loads a file.</p>
-<p>The <i>Advanced</i> button opens further controls: the method (the
-recursive method, or the older direct method), the time limit, the detailed
-report (the evidence that gk collected), full proofs (the sub-proofs that
-the nested searches found), a cap on the number of answers, two limits of
-the direct method, a sampling check that computes the answer a second time
-by sampling, and a search-strategy field. The <b>?</b> button next to the
-fields explains each of them.</p>
+<p>The <i>method</i> selector beside the examples chooses how gk answers:
+<i>the default</i>, <i>the exact method</i> or <i>the general method</i>
+(below). The <i>Advanced</i> button opens further controls: the historical
+direct method of gk 1.1.2, the time limit, the detailed report (the evidence
+that gk collected), full proofs (the sub-proofs that the searches found), a
+cap on the number of answers, two limits of the direct method, a check that
+computes the answer a second time with the reference tool or by sampling,
+and a search-strategy field. The <b>?</b> button next to the fields
+explains each of them.</p>
 
 <h4>Syntax in brief</h4>
 <p>Statements end with a period. <code>%</code> starts a line comment,
@@ -1479,16 +1656,16 @@ limit and the search strategy can miss proofs.</p>
 <ul>
 <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/input_languages.md">Input languages</a> &mdash; GKP, JSON, GKS and TPTP in full</li>
 <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">The support semantics</a> &mdash; what the four shares mean, explained on examples</li>
-<li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/how_gk_works.md">How gk works</a> &mdash; the recursive method on examples</li>
+<li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/how_gk_works.md">How gk works</a> &mdash; the exact and the general method on examples</li>
 <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/recursive_output.md">The output</a> &mdash; the result line, the proofs, the readings and the dump</li>
 <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/cli_reference.md">Command line reference</a> &mdash; every option of the native binaries</li>
 <li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/strategy_reference.md">Strategy reference</a> &mdash; the search-strategy JSON accepted under Advanced</li>
-<li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/mcref.md">The reference tool mcref</a> &mdash; the support semantics computed by sampling, used by the sampling check</li>
-<li><a href="https://github.com/tammet/gkreasoner/tree/master/montecarlo">Clause-activation sampler</a> &mdash; the second method of the sampling check</li>
+<li><a href="https://github.com/tammet/gkreasoner/blob/master/Doc/mcref.md">The reference tool mcref</a> &mdash; the support semantics computed by exact evaluation or by sampling; the check under Advanced runs its exact evaluation</li>
+<li><a href="https://github.com/tammet/gkreasoner/tree/master/montecarlo">Clause-activation sampler</a> &mdash; the second method of the check</li>
 <li>
-  Research papers: the support semantics and the recursive method are in a
-  paper in preparation (2026), whose semantics the support semantics page
-  states. Older versions of gk:
+  Research papers: the support semantics, the exact method and the general
+  method are in a paper in preparation (2026), whose semantics the support
+  semantics page states. Older versions of gk:
   <a href="https://arxiv.org/abs/2608.09190">uncertainty propagation and proof structure (2026, the direct method)</a>
   &middot;
   <a href="https://link.springer.com/chapter/10.1007/978-3-031-10769-6_18">defaults and exceptions (2022)</a>
@@ -1540,7 +1717,22 @@ as its core.</p>
 exceptions (<code>unless</code>), and a negated statement can have evidence
 of its own. For a question gk reports four shares: support for the
 statement, support against it, conflict and ignorance.</p>
-<p>gk answers with the <b>recursive method</b>:</p>
+<p>gk has two methods and a default choice between them. <b>The exact
+method</b> searches by resolution from the question until every search
+task has ended. It then evaluates the evidence that it collected. Its
+answer is then marked <i>complete</i>: the value of the support semantics
+for the input as gk reads it. On an input with equality or a built-in
+condition it gives no value and names the reason. <b>The general
+method</b> covers the whole input language, equality and function terms
+included, and gives a budgeted <i>estimate</i>. <b>The default</b> runs the
+exact method within half of the time limit, and the general method with
+the time left when the exact method gives no answer. An input with a
+function symbol with arguments or an equality goes to the general method at
+once. The result names the method that answered and the status of each
+value: <i>complete</i>, <i>not complete</i> (an answer of the exact method
+at a limit, with its reason), <i>estimate</i> (with its reason when gk
+gives one) or <i>no value</i>.</p>
+<p>The general method works as follows:</p>
 <ol>
 <li>It searches for a proof of the question.</li>
 <li>It turns each proof into <i>applications</i>: one use of one input
@@ -1552,11 +1744,12 @@ find add applications and searches of their own.</li>
 <li>At checkpoints, one calculation over all the applications found gives
 the four shares. Shared evidence counts once.</li>
 </ol>
-<p>The four shares follow the <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">support semantics</a>. The reference tool of the sampling
-check computes the same semantics in another way, so the two can be
-compared. gk reports the latest completed calculation, with notes on what it
-does not include: searches cut by their time allowance, and the
-approximations (<i>readings</i>) that it applied. <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/how_gk_works.md">How gk works</a> explains the method
+<p>The four shares follow the <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">support semantics</a>. The reference tool
+under <i>Advanced</i> computes the same semantics in another way, so the two
+can be compared. The general method reports the latest completed
+calculation, with notes on what it does not include: searches cut by their
+time allowance, and the approximations (<i>readings</i>) that it
+applied. <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/how_gk_works.md">How gk works</a> explains the method
 on examples.</p>
 <p>The older <i>direct method</i> of gk 1.1.2, gk's default before version
 1.2.0, can be chosen under <i>Advanced</i>. It prints its own result format
@@ -1593,11 +1786,14 @@ answer that gk's proofs found; an instance
 without a proof is not listed. A share of 0 for a statement does not make
 it false: false needs support for its negation.</p>
 <p><b>readings</b> name the approximations and conventions that gk applied
-to the value. For example, <code>cycle cut</code> marks a cycle that gk cut
-in order to evaluate it. <b>search</b> says how many nested searches ran,
-how many their time allowance cut, and which checkpoint the value comes
-from. A search that did not finish may have missed evidence: more time can
-change the value.</p>
+to the value. For example, <code>narrowing</code> marks a loop across signs
+that gk evaluated by the narrowing, and <code>no self-support</code> an
+application that gk left out because it would support its own condition.
+<b>search</b> describes the search behind the
+value. For the exact method it counts the search tasks that ended and names
+the limits that the run met. For the general method it counts the nested
+searches and those that their time allowance cut. A search that did not
+finish may have missed evidence: more time can change the value.</p>
 <p><b>proofs</b>, behind the expander under the table, are the resolution
 proofs of each answer: the proofs for it (<code>for #1</code>, ...),
 against it (<code>against #1</code>, ...) and of the exceptions left in
@@ -1649,8 +1845,9 @@ ground statement (an <i>atom</i>, such as <code>bird(t)</code>) gets a
 random number between 0 and 1, and a complete set of these numbers is a
 <i>world</i>. A statement with confidence .8 establishes its atom in the
 worlds where the atom's number is below .8. The report gives the share of
-worlds in each of the four states. gk computes the shares without sampling;
-the reference tool of the sampling check samples worlds to check gk.</p>
+worlds in each of the four states. gk computes the shares without sampling.
+The reference tool under <i>Advanced</i> computes them too, by exact
+evaluation over the cells of the world space, to check gk.</p>
 <p>A few rules cover most of the examples:</p>
 <ul>
 <li><b>Chaining multiplies.</b> <code>0.8::bird(t).</code> and
@@ -1740,26 +1937,33 @@ default.</p>
       <div class="modal-header">
         <button type="button" class="close" data-dismiss="modal">
             <span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
-            <h4 class="modal-title" style="color: black;">Checking results by sampling</h4>
+            <h4 class="modal-title" style="color: black;">Checking results with the reference tool and by sampling</h4>
       </div>
       <div class="modal-body">
-<p>The sampling check computes the answer a second time, in another
-way, so that the two numbers can be compared. Its controls are in the
+<p>The check computes the answer a second time, in another way, so that
+the two numbers can be compared. Its controls are the sampling row of the
 <i>Advanced</i> panel. There are two methods.</p>
 <ul>
 <li><b>Support semantics (mcref)</b>, the default, runs the reference tool
-<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/mcref.md">mcref</a> in your browser. The tool computes the support semantics by
-sampling worlds, as the semantics defines them (see <i>from input
-confidence to answer support</i>), and it shares no code with gk's
-evaluation. The table shows, per answer, the tool's four shares, the
-<i>unresolved</i> share (worlds in which a cycle leaves an atom without a
-state), gk's own value with the current settings, and whether the two
-agree. Each share of the tool lies within e of the semantics' value, at
-95 % for the four shares of one answer together; with 20,000 worlds e is
-about .011. Where gk records a reading such as <code>cycle cut</code>, its
-value can differ from the tool's (example 18). The tool declines inputs
-that it cannot ground over their constants: function symbols, equality and
-taxonomy ranks.</li>
+<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/mcref.md">mcref</a> 1.3.1 in your browser. Up to 300,000 cells it evaluates exactly. The
+tool divides the world space (see <i>from input confidence to answer
+support</i>) into cells, inside which every state is constant. It
+evaluates one world in each cell and adds the volume of the cell to the
+state that it finds. Its values are exact up to the rounding of
+floating-point numbers. It shares no code with gk's evaluation. The table shows, per answer, the
+tool's four shares, the <i>no value</i> share (the share of the world space
+in which a cycle leaves the atom without a value), gk's own value with the
+current settings, and whether the two are equal. A complete answer of the
+exact method equals the tool's value; the general method's value can
+differ. The tool also lists its notes: the proofs of several statements
+that it used, a limit of their search, and an application that it drops
+because its exception is one of its own conditions. Above 300,000 cells
+the tool samples instead, as the Python tool does: it draws the number of
+worlds that the <i>worlds</i> menu sets (seed 1). Each sampled share then
+lies within e of the semantics' value, at 95 % for the four shares of one
+answer together; with 20,000 worlds e is about .011. The tool declines
+inputs that it cannot ground over their constants: function symbols,
+equality and taxonomy ranks.</li>
 <li><b>Clause activation</b> measures a different quantity. Each world
 keeps every uncertain statement with a probability equal to its confidence
 and drops it otherwise; certain statements are always kept. An unweighted
@@ -1771,9 +1975,9 @@ about .45, where the semantics and gk give .27. One proof search runs per
 world, so a thousand worlds can take a minute.</li>
 </ul>
 <p>Both methods need a small, finite input: constants only, without function
-terms, arithmetic, equality or a background knowledge base. The estimates
-are repeatable: the same input and world count give the same sampled
-worlds. <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/mcref.md">The reference tool</a> and the
+terms, arithmetic, equality or a background knowledge base. The
+clause-activation estimates are repeatable: the same input and world count
+give the same sampled worlds. <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/mcref.md">The reference tool</a> and the
 <a href="https://github.com/tammet/gkreasoner/tree/master/montecarlo">clause-activation sampler</a> are
 described in the gkreasoner repository.</p>
       </div>
@@ -1792,21 +1996,30 @@ described in the gkreasoner repository.</p>
             <h4 class="modal-title" style="color: black;">The advanced controls</h4>
       </div>
       <div class="modal-body">
-<p><b>method</b>: <i>recursive</i>, the default, is gk's method since
-version 1.2.0. <i>direct (gk 1.1.2)</i> runs the older direct method and
-shows its own output as text.</p>
+<p><b>method</b> (beside the examples): <i>the default</i> runs the exact
+method first, within half of the time limit, then the general method with
+the time left. <i>The exact method</i> runs alone and never switches.
+<i>The general method</i> runs alone; it was gk's default from version 1.2.0
+to 1.2.5. The Tweety examples 24 to 27, which compare gk with the support
+semantics, start with the exact method selected. A value is
+<i>complete</i> only when the exact method ended every search task; it then
+concerns the input as gk reads it, within gk's numerical precision
+(confidences are read to six decimals, and a near-one confidence that gk
+reads as 1 is listed under <i>confidence readings</i>).</p>
+<p><b>historical: direct method</b> runs the direct method of gk 1.1.2 and
+shows its own output as text; it overrides the method selector.</p>
 <p><b>seconds</b> is the time limit for the whole search. When it runs out,
 gk reports the value of the latest completed calculation, and the
 <i>search</i> line counts the nested searches that their time allowance
 cut. A hard example (planning, a large knowledge base) may need more than
 the default 5.</p>
-<p><b>detailed report</b>: with the recursive method it adds the evidence
-that gk collected, the table of applications (each one use of one input
+<p><b>detailed report</b>: with the default, the exact or the general
+method it adds the evidence that gk collected, the table of applications (each one use of one input
 statement, with its conditions, exceptions, confidence and rank) and the
 status facts. With the direct method it adds the direct method's
 four-component report.</p>
-<p><b>full proofs</b> (recursive method): every proof also shows the
-sub-proofs that the nested searches found, each under the step whose search
+<p><b>full proofs</b> (the default, the exact and the general method):
+every proof also shows the sub-proofs that the searches found, each under the step whose search
 found it. Without it a proof shows its main structure only.</p>
 <p><b>max answers</b> caps how many distinct answers an open question
 collects. Raise it when a question has many values; lower it to 1 to stop
@@ -1814,12 +2027,15 @@ at the first answer found.</p>
 <p><b>confidence limit</b> (direct method): the minimum verdict confidence
 an answer needs, the absolute difference between its support for and
 against. An answer under the limit is reported as <code>evidence below
-limit</code>. The recursive method lists every answer that it found, with
-its four shares.</p>
+limit</code>. The exact and the general method list every answer that
+they found, with its four shares.</p>
 <p><b>exception limit</b> (direct method): the minimum confidence an
 exception proof needs to block a default.</p>
-<p>The <b>sampling</b> row runs the sampling check (see <i>checking results
-by sampling</i>).</p>
+<p>The <b>sampling</b> row runs the check with the reference tool or by
+sampling (see <i>what sampling checks</i>). Its <i>worlds</i> menu sets the
+number of sampled worlds: for clause activation always, for the reference
+tool only above 300,000 cells, where it samples instead of evaluating the
+cells exactly.</p>
 <p>The text field below the sampling row takes a search strategy as JSON
 and overrides the automatic strategy choice; the options are described in
 the <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/strategy_reference.md">strategy reference</a>.</p>
@@ -1872,11 +2088,14 @@ with no conflict.</p>
 <code>-flies(pingu)</code> is not established. The proof against
 establishes exactly that, so the value is (0, 1, 0, 0) although both
 proofs are listed.</p>
-<p>gk starts from a proof and then checks it. The <i>search</i> line counts
-the nested searches: for opposition to each conclusion, for further support
-and opposition at each condition, and for each exception. The <i>raw
-output</i> shows what gk printed: one line <code>{"recursive": ...}</code>,
-then a dump of the evidence. See <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/how_gk_works.md">how gk works</a> and <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">the support semantics</a> for
+<p>The default answered with the exact method: the <i>method</i> line
+names it, and the status of each answer is <i>complete</i>. The exact
+method searches by resolution from the question: for the answer and against
+it, at each condition of its proofs and for each exception, until every
+search task has ended. The <i>search</i> line counts these tasks. The
+<i>raw output</i> shows what gk printed: one line
+<code>{"recursive": ...}</code>; with the detailed report, also a dump of
+the evidence. See <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/how_gk_works.md">how gk works</a> and <a href="https://github.com/tammet/gkreasoner/blob/master/Doc/support_semantics.md">the support semantics</a> for
 what the four shares mean.</p></div>
 
 <div id="example_cs2_input_notes"><h3>Example 2: confidences</h3>
@@ -1967,7 +2186,9 @@ smokes(chris).
 
 query(smokes(sam)).</code></pre>
 <div id="example_cs5_proof_notes">
-<p>gk gives (0.3804, 0, 0, 0.6196).</p>
+<p>The default answers with the exact method: (0.3764, 0, 0, 0.6236),
+complete. The general method, a budgeted estimate (select it with the
+method selector), gives (0.3804, 0, 0, 0.6196).</p>
 <p>The support semantics gives 0.3764 for <code>smokes(sam)</code>. One route
 is the base tendency, 0.3. The other route goes through chris: sam is
 susceptible (0.6), sam is a friend of chris (0.91), and chris smokes (1).
@@ -1976,13 +2197,13 @@ rule (0.9) and the general 0.1 tendency,
 <code>1 - (1 - 0.9) * (1 - 0.1) = 0.91</code>. The influence rule then gives
 <code>0.6 * 0.91 * 0.2 = 0.1092</code>, and noisy-or with the base tendency
 gives <code>1 - (1 - 0.3) * (1 - 0.1092) = 0.3764</code>.</p>
-<p>gk's value is 0.004 higher, and gk records no reading for it. The
-difference comes from the instance of the influence rule with
+<p>The general method's value is 0.004 higher, and it records no reading
+for it. The difference comes from the instance of the influence rule with
 <code>Y = sam</code>, whose condition <code>smokes(sam)</code> is the
 question itself. When the rule's condition names a separate predicate for
-chris, gk gives 0.3764 exactly. Press <i>Sample</i> under Advanced: with
-20,000 worlds the reference tool gives 0.372, within its sampling error
-of 0.3764.</p></div>
+chris, the general method gives 0.3764 exactly. Press <i>Sample</i> under
+Advanced: the reference tool evaluates the 4,096 cells of the world space
+and gives 0.37644, the exact method's value.</p></div>
 
 <div id="example_cs6_input_notes"><h3>Example 6: shared evidence</h3>
 <p>Two rules predict rain: one from dark clouds and falling pressure
@@ -2035,13 +2256,12 @@ for 0.3. The flying rule can use the premise only where it is established
 without conflict, 0.3 of the worlds, and there it supports flying with
 strength 0.9: <code>0.3 * 0.9 = 0.27</code>. The evidence against the bird
 premise is no evidence against flying, so against stays 0.</p>
-<p>gk finds the opposing premise evidence by itself: after the proof of
-flying, it searches for opposition to each condition of the proof. The
-proof under the table has the confidence 0.45, 0.5 * 0.9: a proof does
-not see the evidence against its premise. The value does, so it is
-0.27.</p>
+<p>gk finds the opposing premise evidence by itself: its search covers
+each condition of the proof, not only the question. The proof under the
+table has the confidence 0.45, 0.5 * 0.9: a proof does not see the
+evidence against its premise. The value does, so it is 0.27.</p>
 <p>This example shows two quantities apart. Press <i>Sample</i> under
-Advanced. The default, the support semantics, gives about 0.27. Switch the
+Advanced. The default, the support semantics, gives 0.27. Switch the
 sampling menu to <i>clause activation</i>: each world keeps every uncertain
 statement with its confidence and asks whether the answer is provable. That
 count gives about 0.45: where the bird fact is kept, flying is provable,
@@ -2065,9 +2285,9 @@ query(flies(X)).
 % it can be shown that the bird does not fly.</code></pre>
 <div id="example_cs8_proof_notes">
 <p>Both <code>flies(tweety)</code> and <code>flies(robin)</code> are
-(1, 0, 0, 0). The default applies to both birds. gk's nested searches looked
-for <code>-flies(tweety)</code> and <code>-flies(robin)</code>, the
-exceptions, and found nothing.</p>
+(1, 0, 0, 0). The default applies to both birds. The exact method's search
+looked for <code>-flies(tweety)</code> and <code>-flies(robin)</code>, the
+exceptions, and found no proof of them.</p>
 <p>Add the fact <code>-flies(tweety).</code> and solve again:
 <code>flies(tweety)</code> becomes (0, 1, 0, 0). The default yields to the
 established contrary, so there is no conflict. <code>flies(robin)</code>
@@ -2293,20 +2513,24 @@ it lists the evidence gk collected.</p></div>
 example 4 the premise is in conflict in 0.7 of the worlds and established
 in 0.28. The flying clause gives <code>0.28 * 0.9 = 0.252</code>. Not flying
 would need <code>-bird(tweety)</code> established without conflict, which
-never happens, so against is 0. The four proofs for flying have higher
-confidences (0.81 and less): each is one route, and none sees the doubt
-about the premise, which only the value counts.</p>
+never happens, so against is 0. The proof for flying has the higher
+confidence 0.81: it is one route, and it does not see the doubt about the
+premise, which only the value counts. The proof against, 0.63, derives
+<code>-flies(tweety)</code> from the doubt through
+<code>only_birds_fly</code>; its premise is never established without
+conflict, so it adds nothing to the value.</p>
 <p>The table of evidence lists the applications: one use of one input
-clause each. A row <code>$src_e5(tweety)</code> is a <i>source event</i>:
-the clause <code>only_birds_fly</code> is used in two directions,
-<code>bird(tweety)</code> from <code>flies(tweety)</code> and
-<code>-flies(tweety)</code> from <code>-bird(tweety)</code>, and both uses
-share the one event that the clause is in force.</p>
-<p>The two directions make a loop across signs between
-<code>bird(tweety)</code> and <code>flies(tweety)</code>. gk evaluates such
-a loop with a <i>cycle cut</i>, which the readings list names. Here the cut
-leaves the semantics' value: <i>Sample</i> gives 0.255 with 20,000
-worlds, within its sampling error of 0.252.</p></div>
+clause each. A row <code>$src_5(tweety)</code> is a <i>source event</i>: the
+event that the uncertain clause <code>only_birds_fly</code> is in force. Its
+use <code>-flies(tweety)</code> from <code>-bird(tweety)</code> has the
+event as a condition. The other direction, <code>bird(tweety)</code> from
+<code>flies(tweety)</code>, is not in the table: <code>flies(tweety)</code>
+can be derived only through <code>bird(tweety)</code>, so that use would
+support its own condition, and no self-support leaves it out. The same
+holds for <code>-bird(tweety)</code> from <code>-flies(tweety)</code>.</p>
+<p>The exact method answers this example completely, without readings.
+<i>Sample</i> under Advanced gives the same value, 0.252, by the reference
+tool's exact evaluation.</p></div>
 
 <div id="example_cs16_input_notes"><h3>Example 16: JSON notation</h3>
 <p>The weather example is written in gk's
@@ -2380,27 +2604,29 @@ cnf(birds_fly, axiom,
 cnf(who_does_not_fly, conjecture,
     ( ~ flies(X) ) ).</code></pre>
 <div id="example_cs18_proof_notes">
-<p>gk gives <code>-flies(p)</code> (0.72, 0, 0, 0.28), with the reading
-<code>cycle cut</code>. For is <code>0.8 * 0.9 = 0.72</code>: the penguin
-fact and the no-fly clause.</p>
-<p>The support semantics gives (0.722, 0.077, 0, 0.201). Where
-<code>p</code> is a penguin but the no-fly clause is not in force (about
-0.08 of the worlds), <code>p</code> is a bird, the flying default applies,
-and flying counts against the answer. gk does not see this part. The
-flying default's exception is <code>-flies(p)</code>, the question atom
-itself, and the no-fly clause read backwards turns flying into evidence
-against the penguin fact. So the evidence forms loops through the default
-and across signs. gk evaluates such loops with a <i>cycle cut</i>: walking
-from the question, it removes the application that leads back. Here the cut
-removes the flying default's support, and against becomes 0. The proof
-<i>against #1</i> under the table is that route: it derives
+<p>gk gives <code>-flies(p)</code> (0.72, 0.08, 0, 0.2), with the readings
+<code>no self-support</code> and <code>narrowing</code>. The default sends
+this input to the general method: the exception with a rank on a statement
+without a written head is outside the exact method's class. For is
+<code>0.8 * 0.9 = 0.72</code>: the penguin fact and the no-fly clause.</p>
+<p>The support semantics gives the same value. Where <code>p</code> is a
+penguin but the no-fly clause is not in force (0.8 * 0.1 = 0.08 of the
+worlds), <code>p</code> is a bird, the flying default applies, and flying
+counts against the answer: against is 0.08. The flying default's exception is
+<code>-flies(p)</code>, the question atom itself, and the no-fly clause read
+backwards turns flying into evidence against the penguin fact. So the
+evidence forms loops through the default and across signs. gk 1.2.5
+evaluated such loops with a <i>cycle cut</i>: walking from the question, it
+removed the application that leads back, and against became 0: (0.72, 0, 0,
+0.28). The proof <i>against #1</i> under the table is that route: it derives
 <code>flies(p)</code> from the penguin fact (0.8) through the flying
 default and leaves the default's exception
-<code>unless(-flies(p), 2)</code> open, the question itself. It is listed,
-but after the cut it adds nothing to the value.</p>
-<p>Press <i>Sample</i> under Advanced to see the difference: the reference
-tool computes the support semantics by sampling worlds and shows both
-values side by side (<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/mcref.md">the reference tool</a>).</p>
+<code>unless(-flies(p), 2)</code> open, the question itself.</p>
+<p>Press <i>Sample</i> under Advanced: the reference tool computes the
+support semantics by exact evaluation and shows its value beside gk's
+(<a href="https://github.com/tammet/gkreasoner/blob/master/Doc/mcref.md">the reference tool</a>). Here the two are equal. The tool also
+lists <code>-flies(b)</code> with against 1, an instance for which gk finds
+no proof of the question and lists no answer.</p>
 <p>The reading <code>self exception</code> names a use of the flying clause
 whose exception is its own condition, <code>-bird(p)</code> from
 <code>-flies(p)</code> unless <code>-flies(p)</code>: such a use never
@@ -2608,11 +2834,13 @@ the <code>$block</code> in its clause and its 0.9 confidence), and the
 strict "penguins cannot fly" sentence establishes the contrary, so the
 default yields: the penguin pattern of example 10, now produced
 automatically from English text.</p>
-<p>The readings list <code>cycle cut</code>: the strict penguin sentence,
+<p>The readings list <code>narrowing</code>: the strict penguin sentence,
 read backwards, connects the default's atoms in loops across signs, and gk
-evaluates such loops with a cut. The search line reports nested searches cut
-by their allowance in the large background knowledge base; the value comes
-from the evidence found within the budget.</p></div>
+evaluates such loops by the narrowing; an atom that the narrowing leaves
+undecided has no value. The default sends this input to the general method,
+and the search line reports nested searches cut by their allowance in the
+large background knowledge base; the value comes from the evidence found
+within the budget.</p></div>
 
 <div id="example_cs22_input_notes"><h3>Example 22: a which-question from English</h3>
 <p>A wh-question produced by the same
@@ -2716,25 +2944,33 @@ leg joins it, <code>1 - (1 - 0.936) * (1 - 0.3) = 0.9552</code>. The airplane
 default (0.4, from the wing) and the strict rule "an airplane is not an
 organism" give 0.4 against. For plus conflict is 0.9552, against plus
 conflict is 0.4.</p>
-<p><code>isa(a1, organism)</code> is (0, 0.4, 0.6, 0): the strict engine
-rule gives 1 against, the bird default from the wing gives 0.6 for, and
-where both pass the result is conflict, 0.6.</p>
+<p><code>isa(a1, organism)</code> is (0, 1, 0, 0): the strict engine rule
+gives 1 against. The certain rule "a bird is an organism", read backwards,
+then makes a1 not a bird, so the bird default from the wing yields to its
+exception and adds no support for. gk 1.2.5 gave (0, 0.4, 0.6, 0): its
+cycle cut dropped that exception, the bird default gave 0.6 for, and where
+both passed the result was conflict, 0.6.</p>
 <p>Three remarks. First, the certain rules are read in both directions: "a
 bird is an organism" also says that what is not an organism is not a bird.
 This makes the defaults' exceptions depend on the organism question itself,
-a loop through exceptions, and gk evaluates it with a <i>cycle cut</i>.
-With equal numeric ranks in place of the <code>tax(...)</code> ranks, the
-reference tool gives b1 and h1 within its sampling error of gk's values, but
-a1 (0, 1, 0, 0): the engine makes a1 not an organism, hence not a bird, and
-the bird default yields. The cut drops that exception. Second, gk's first
+a loop through exceptions, and gk evaluates it by the narrowing (the
+reading <code>narrowing</code>). With equal numeric ranks in place of the
+<code>tax(...)</code> ranks, the exact method answers and the reference tool
+gives the same values: b1 as above, h1 (0.44, 0, 0, 0.56) and a1
+(0, 1, 0, 0). Second, gk's first
 proof search with the default strategy does not find <code>h1</code>; with
 the strategy <code>{"strategy":["query_focus"],"query_preference":1}</code>
 gk lists <code>isa(h1, organism)</code> (0.44, 0, 0, 0.56) and b1, but not
-a1. Third, the recursive method reads a taxonomy rank as rank 0; here no two
+a1. Third, the general method reads a taxonomy rank as rank 0; here no two
 defaults of opposite signs compete on one atom, so the ranks do not change
 the value. The reference tool declines <code>tax(...)</code> ranks.</p></div>
 
 <div id="example_cs24_input_notes"><h3>Example 24: Tweety, layer 1 &mdash; an uncertain exception</h3>
+<p>These examples start with <i>the exact method</i> selected: they compare
+gk with the support semantics, and a complete answer of the exact method is
+the semantics' value for the input as gk reads it. Select <i>the general
+method</i> to see the budgeted estimate; the steps that the notes describe
+("gk reaches this in three steps") are the general method's.</p>
 <p>Examples 24 to 27 build one question in layers: does Tweety fly? Tweety
 is a bird. Birds normally fly, with confidence 0.9. Penguins normally do not,
 and the penguin default has the higher rank, 3. Tweety is a seabird with
@@ -2823,14 +3059,14 @@ gull(X) :- seabird(X), yellow_bill(X).
 0.6::yellow_bill(tweety).
 query(flies(tweety)).</code></pre>
 <div id="example_cs27_proof_notes">
-<p>The answer is again (0.6984, 0.224, 0, 0.0776), with two readings
-<code>cycle cut</code>. The three atoms <code>seabird</code>,
+<p>The answer is again (0.6984, 0.224, 0, 0.0776), complete, with the
+reading <code>narrowing</code>. The three atoms <code>seabird</code>,
 <code>yellow_bill</code> and <code>gull</code> now form a loop across
-signs. The support semantics evaluates the loop by narrowing: where the three
-input facts pass, all three atoms end in conflict, none supplies a usable
-premise, and the penguin proof fails there. gk cuts the loop instead; on
-this input the cut leaves the semantics' value. <i>Sample</i> shows the same
-numbers within its sampling error.</p></div>
+signs. The support semantics evaluates the loop by the narrowing: where the
+three input facts pass, all three atoms end in conflict, none supplies a
+usable premise, and the penguin proof fails there. The exact method does the
+same, and <i>Sample</i> shows the same value by the reference tool's exact
+evaluation.</p></div>
 
 </div><!-- /hidden examples -->
 
