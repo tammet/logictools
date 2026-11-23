@@ -143,14 +143,14 @@ var gkWorker = null;          // the worker running the current/last solve
 var examplePresets = {
   "13": { strategy: '{"strategy":["unit"],"query_preference":0,"arith_instantiation":1}' },
   "15": { detail: true },
-  // 20: gk's first proof search gets a quarter of the budget and needs
-  // several seconds of it to find the plan; at 20 seconds it does not
-  "20": { seconds: "30", maxanswers: "1" },
-  "21": { strategy: '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}', confidence: "0.1", background: true, taxonomy: true },
-  // 22: in the browser build the base search needs more than a quarter of a
-  // 5-second budget to find the which-answer; at 8 seconds it finds it
-  // (5.8 s in wasm under node), 10 leaves a margin for slower machines
-  "22": { seconds: "10", strategy: '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}', confidence: "0.1", background: true, taxonomy: true },
+  // 20, 21, 22: the first proof search gets a quarter of the budget. Each
+  // preset is four times a limit at which the example gives its answer in
+  // wasm under node, so that a device four times slower finds it too:
+  // 20 answers at 25 s (preset 120), 21 at 2 s (preset 8), 22 at 10 s
+  // (preset 40)
+  "20": { seconds: "120", maxanswers: "1" },
+  "21": { seconds: "8", strategy: '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}', confidence: "0.1", background: true, taxonomy: true },
+  "22": { seconds: "40", strategy: '{"strategy": ["negative_pref", "posunitpara"], "query_preference": 1}', confidence: "0.1", background: true, taxonomy: true },
   "23": { taxonomy: true },
   // 24-27 compare gk with the support semantics: the exact method is
   // preselected, and its complete answer is the semantics' value for the
@@ -2671,11 +2671,14 @@ JSON-LD-LOGIC write defaults in this form directly.</p></div>
 configuration. The plan is found as the answer term: a nested sequence of
 <code>pickup</code>/<code>putdown</code> actions transforming the initial
 situation.</p>
-<p>The time limit is preset to 30 seconds and max answers to 1 (one plan).
+<p>The time limit is preset to 120 seconds and max answers to 1 (one plan).
 gk's first proof search gets a quarter of the budget, and finding the plan
 takes several seconds of it; with a shorter limit the plan is not found. The
 search runs off the page's main thread, so the page stays responsive; press
-Stop to abort it.</p></div>
+Stop to abort it.</p>
+<p>On a slow device, raise <i>seconds</i> under Advanced. On our test
+machine this example gives its answer with a limit of 25 seconds; the
+preset leaves room for a device four times slower.</p></div>
 <pre><code id="example_cs20_input_code">% Blocks-world planning with situation terms and frame axioms.
 % Adapted from GKC's Examples/blocks.txt: goal(State) replaces the reserved
 % $ans(State) literal, and query(goal(State)) asks gk for a plan.
@@ -2772,7 +2775,7 @@ sequence of actions of the plan:</p>
 <li>pick up <code>c</code></li>
 <li>put <code>c</code> on <code>b</code></li>
 </ol>
-<p>The whole run takes about 20 seconds. After the plan, gk checks it: the
+<p>The whole run takes about 80 seconds on our test machine. After the plan, gk checks it: the
 nested searches look for opposition to the steps of the proof until the
 budget is spent, and the search line reports the ones cut by their time
 allowance. With certain clauses and no negative facts they find nothing,
@@ -2798,7 +2801,11 @@ scenes.</p>
 <p>The <code>$ctxt</code> terms carry the context an atom is asserted in
 &mdash; tense, world, location and knowledge source &mdash; so that the
 background axioms can reason about when and where a statement holds. They
-are part of the llmpipe encoding scheme, not something gk requires.</p></div>
+are part of the llmpipe encoding scheme, not something gk requires.</p>
+<p>The time limit is preset to 8 seconds. On a slow device, raise
+<i>seconds</i> under Advanced. On our test machine this example gives its
+answer with a limit of 2 seconds; the preset leaves room for a device four
+times slower.</p></div>
 <pre><code id="example_cs21_input_code">// Penguins are birds. Penguins do not fly. Birds fly. John is a penguin. John flies?
 // Expected answer: False
 // Uses the shared background knowledge base axioms_std.js.
@@ -2854,9 +2861,10 @@ is a specific individual mentioned in the text, while a value like
 the text without a name. The <code>$ctxt</code> terms carry the context an
 atom is asserted in (tense, world, location, knowledge source), as in the
 previous example.</p>
-<p>The time limit is preset to 10 seconds: in the browser, gk's first proof
-search needs more than a quarter of a 5-second budget to find the
-answer.</p></div>
+<p>The time limit is preset to 40 seconds: gk's first proof search gets a
+quarter of the budget. On a slow device, raise <i>seconds</i> under
+Advanced. On our test machine this example gives its answer with a limit of
+10 seconds; the preset leaves room for a device four times slower.</p></div>
 <pre><code id="example_cs22_input_code">// Squirrels can fly. Foxes cannot fly. Squirrels and foxes are animals. Which animal cannot fly?
 // Expected answer: A fox
 // Uses the shared background knowledge base axioms_std.js.
@@ -2894,8 +2902,8 @@ answer.</p></div>
 unnamed fox, introduced as a representative member of its class. Population
 clauses (marked <code>@sourcetype: "populate"</code>) supply such typical
 members for the classes mentioned in the text, so that questions about "a
-fox" or "some bird" have witnesses to find. The run takes about 7
-seconds.</p></div>
+fox" or "some bird" have witnesses to find. The run takes about 27
+seconds on our test machine.</p></div>
 
 <div id="example_cs23_input_notes"><h3>Example 23: taxonomy classification</h3>
 <p>Three objects with known parts: <code>h1</code> has a leg, <code>b1</code>
